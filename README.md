@@ -4,7 +4,7 @@ Goal: Train a neural network to successfully get the ball into the basket, using
 
 # Development Roadmap
 
-1. Project Setup: Repo/git setup, packages, githooks
+1. Project Setup: Repo/git setup, packages, githooks (linting/formatting)
 2. Tests: Unit tests for a testing-led development approach
 3. Environment: A cannon shoots a ball at a robot, which can then hit it into the basket
 4. Train: Use colab to train a PPO model
