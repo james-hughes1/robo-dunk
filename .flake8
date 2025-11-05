@@ -1,0 +1,4 @@
+[flake8]
+max-line-length = 88
+# recommended when using Black
+extend-ignore = E203, W503
