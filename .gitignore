@@ -1,6 +1,6 @@
-# Unit test / coverage reports
+# Cache files
 .pytest_cache/
-tests/
+**/__pycache__
 
 # Environments
 .env
