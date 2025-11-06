@@ -9,6 +9,11 @@ env:
   screen_height: 400
   fps: 60
   resize: [96, 96]
+  arm_length: 80
+  bucket_height: 10
+  bucket_width: 100
+  bucket_y: 250
+
 
 ppo:
   learning_rate: 2.5e-4

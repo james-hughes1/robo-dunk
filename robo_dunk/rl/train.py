@@ -1,6 +1,6 @@
 import os
 
-from gymnasium.wrappers import GrayScaleObservation, ResizeObservation
+from preprocessing import GrayScaleObservation, ResizeObservation
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.monitor import Monitor
@@ -27,9 +27,10 @@ def make_env_fn(env_cfg):
             screen_width=env_cfg.get("screen_width", 400),
             screen_height=env_cfg.get("screen_height", 400),
             fps=env_cfg.get("fps", 60),
-            robot_width=env_cfg.get("robot_width", 50),
-            robot_height=env_cfg.get("robot_height", 20),
-            # ... you can pass more fields if present in YAML
+            arm_length=env_cfg.get("arm_length", 80),
+            bucket_height=env_cfg.get("bucket_height", 10),
+            bucket_width=env_cfg.get("bucket_width", 100),
+            bucket_y=env_cfg.get("bucket_y", 250),
         )
         # render_mode should be None for training; set "human" if you want visualization
         env = RoboDunkEnv(render_mode=env_cfg.get("render_mode", None), config=config)
