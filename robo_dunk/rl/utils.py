@@ -14,16 +14,23 @@ class RolloutProgressCallback(BaseCallback):
     def __init__(self, log_interval=5, verbose=1):
         super().__init__(verbose)
         self.log_interval = log_interval
-        self.last_log = time.time()
+        self.last_log = None
+        self.start_time = None
+
+    def _on_training_start(self) -> None:
+        self.start_time = time.time()
+        self.last_log = self.start_time
 
     def _on_step(self) -> bool:
         now = time.time()
         if now - self.last_log > self.log_interval:
             self.last_log = now
+            elapsed = now - self.start_time
+            updates = self.model.num_timesteps // self.model.n_steps
             print(
                 f"[Rollout] timestep: {self.num_timesteps}, "
-                f"updates: {self.model.num_timesteps // self.model.n_steps}, "
-                f"fps: {int(self.model._episode_num/self.model._elapsed_time)}"
+                f"updates: {updates}, "
+                f"elapsed: {int(elapsed)}s"
             )
         return True
 
