@@ -1,5 +1,31 @@
 import os
+import time
 from datetime import datetime
+
+from stable_baselines3.common.callbacks import BaseCallback
+
+
+class RolloutProgressCallback(BaseCallback):
+    """
+    Callback that prints progress during PPO rollout collection.
+    Prints every `log_interval` seconds.
+    """
+
+    def __init__(self, log_interval=5, verbose=1):
+        super().__init__(verbose)
+        self.log_interval = log_interval
+        self.last_log = time.time()
+
+    def _on_step(self) -> bool:
+        now = time.time()
+        if now - self.last_log > self.log_interval:
+            self.last_log = now
+            print(
+                f"[Rollout] timestep: {self.num_timesteps}, "
+                f"updates: {self.model.num_timesteps // self.model.n_steps}, "
+                f"fps: {int(self.model._episode_num/self.model._elapsed_time)}"
+            )
+        return True
 
 
 def setup_colab(colab_cfg, ppo_cfg, train_cfg):

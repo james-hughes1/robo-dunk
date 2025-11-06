@@ -14,7 +14,7 @@ from stable_baselines3.common.vec_env import (
 
 from robo_dunk.envs.env import RoboDunkConfig, RoboDunkEnv
 from robo_dunk.rl.preprocessing import GrayScaleObservation, ResizeObservation
-from robo_dunk.rl.utils import setup_colab
+from robo_dunk.rl.utils import RolloutProgressCallback, setup_colab
 
 
 def make_env_fn(env_cfg, rank=0, base_seed=0):
@@ -136,9 +136,15 @@ def train_ppo(cfg):
         env_cfg, save_path, n_stack=n_stack, eval_freq=eval_freq, base_seed=base_seed
     )
 
+    # Log callback
+    logging_freq = train_cfg.get("logging_freq", 10)
+    progress_callback = RolloutProgressCallback(log_interval=logging_freq)
+
     # Train
     total_timesteps = train_cfg.get("total_timesteps", 200_000)
-    model.learn(total_timesteps=total_timesteps, callback=eval_callback)
+    model.learn(
+        total_timesteps=total_timesteps, callback=[eval_callback, progress_callback]
+    )
 
     # Save final model
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
