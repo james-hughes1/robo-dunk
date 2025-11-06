@@ -1,233 +1,361 @@
-import multiprocessing
-import os
+import math
+import random
+from dataclasses import dataclass
 
-import imageio
-import torch
-from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import EvalCallback
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import (
-    DummyVecEnv,
-    SubprocVecEnv,
-    VecFrameStack,
-    VecTransposeImage,
-)
-
-from robo_dunk.envs.env import RoboDunkConfig, RoboDunkEnv
-from robo_dunk.rl.preprocessing import GrayScaleObservation, ResizeObservation
-from robo_dunk.rl.utils import setup_colab
+import cv2
+import gymnasium as gym
+import numpy as np
+import pygame
+import pymunk
+import pymunk.pygame_util
+from gymnasium import spaces
 
 
-def make_env_fn(env_cfg, rank=0, base_seed=0):
-    """
-    Return a function that creates an env. Each env gets a unique seed
-    for reproducibility across runs.
-    """
+@dataclass
+class RoboDunkConfig:
+    # Game
+    screen_width: int = 400
+    screen_height: int = 400
+    fps: int = 60
+    max_episode_steps: int = 1000
 
-    def _init():
-        seed = base_seed + rank
+    # Robot
+    robot_width: int = 50
+    robot_height: int = 20
+    robot_speed: int = 5
+    arm_length: int = 80
+    arm_min: int = 180
+    arm_max: int = 360
+    arm_speed: int = 4
+    arm_elasticity: float = 2.0
 
-        config = RoboDunkConfig(
-            screen_width=env_cfg.get("screen_width", 400),
-            screen_height=env_cfg.get("screen_height", 400),
-            fps=env_cfg.get("fps", 60),
-            arm_length=env_cfg.get("arm_length", 80),
-            bucket_height=env_cfg.get("bucket_height", 10),
-            bucket_width=env_cfg.get("bucket_width", 100),
-            bucket_y=env_cfg.get("bucket_y", 250),
-            max_episode_steps=env_cfg.get("max_episode_steps", 1000),
+    # Ball
+    ball_radius: int = 8
+    shoot_min_speed: int = 400
+    shoot_max_speed: int = 500
+    max_ball_speed: int = 600
+    ball_elasticity: float = 1.0
+    drag: float = 0.99
+
+    # Cannon
+    cannon_width: int = 6
+    cannon_height: int = 30
+    cannon_angle_min: int = 40
+    cannon_angle_max: int = 50
+
+    # Bucket
+    bucket_height: int = 10
+    bucket_width: int = 100
+    bucket_x: int = 400
+    bucket_y: int = 250
+
+    # General
+    object_elasticity: float = 0.5
+    proximity_reward: float = 10.0
+
+
+class RoboDunkEnv(gym.Env):
+    metadata = {"render_modes": ["human"], "render_fps": 60}
+
+    def __init__(self, render_mode=None, config=None):
+        super().__init__()
+        self.config = config or RoboDunkConfig()
+        self.render_mode = render_mode
+        self.screen_width = self.config.screen_width
+        self.screen_height = self.config.screen_height
+        self.clock = pygame.time.Clock()
+        self.fps = self.config.fps
+        self.max_episode_steps = self.config.max_episode_steps
+
+        self._elapsed_steps = 0
+
+        self.action_space = spaces.MultiBinary(4)
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(self.screen_height, self.screen_width, 1),
+            dtype=np.uint8,
+        )
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(self.screen_height, self.screen_width, 1),
+            dtype=np.uint8,
         )
 
-        # render_mode=None for training
-        env = RoboDunkEnv(render_mode=env_cfg.get("render_mode", None), config=config)
+        self._setup()
 
-        # Apply custom grayscale + resize wrappers
-        env = GrayScaleObservation(env, keep_dim=True)
-        env = ResizeObservation(env, env_cfg.get("resize", (96, 96)))
+    def seed(self, seed=None):
+        """Seed RNGs for reproducible behavior."""
+        self._seed = seed
+        self.np_random, seed_ = gym.utils.seeding.np_random(seed)
+        random.seed(seed)  # python random
+        return [seed_]
 
-        # Monitor logs & set seed for reproducibility
-        env = Monitor(env)
-        env.reset(seed=seed)
-        return env
+    def _setup(self):
+        pygame.init()
+        if self.render_mode == "human":
+            self.screen = pygame.display.set_mode(
+                (self.screen_width, self.screen_height)
+            )
+            pygame.display.set_caption("Robo Dunk Bucket")
+            self.draw_options = pymunk.pygame_util.DrawOptions(self.screen)
+        else:
+            self.screen = None
 
-    return _init
+        self._elapsed_steps = 0
 
+        self.space = pymunk.Space()
+        self.space.gravity = (0, 400)
+        self.static_body = self.space.static_body
 
-def create_vec_env(env_cfg, n_envs=1, frame_stack=4, base_seed=0, use_subproc=True):
-    """
-    Create a vectorized environment with optional SubprocVecEnv.
-    Caps n_envs to available CPU cores if using SubprocVecEnv.
-    """
-    max_cores = multiprocessing.cpu_count()
-    if use_subproc and n_envs > max_cores:
-        print(
-            f"n_envs={n_envs} exceeds CPU cores={max_cores}. "
-            f"Capping to {max_cores} for efficiency."
+        # Walls
+        walls = [
+            pymunk.Segment(self.static_body, (0, 0), (0, self.screen_height), 2),
+            pymunk.Segment(
+                self.static_body,
+                (self.screen_width, 0),
+                (self.screen_width, self.screen_height),
+                2,
+            ),
+            pymunk.Segment(self.static_body, (0, 0), (self.screen_width, 0), 2),
+        ]
+        for wall in walls:
+            wall.elasticity = self.config.object_elasticity
+            wall.friction = 0.5
+        self.space.add(*walls)
+
+        # Bucket
+        self.bucket_x = self.config.bucket_x
+        self.bucket_y = self.config.bucket_y
+        self.bucket_width = self.config.bucket_width
+        self.bucket_height = self.config.bucket_height
+        self.bucket_floor = pymunk.Segment(
+            self.static_body,
+            (self.bucket_x - self.bucket_width, self.bucket_y),
+            (self.bucket_x, self.bucket_y),
+            3,
         )
-        n_envs = max_cores
+        self.bucket_wall = pymunk.Segment(
+            self.static_body,
+            (self.bucket_x - self.bucket_width, self.bucket_y),
+            (self.bucket_x - self.bucket_width, self.bucket_y - self.bucket_height),
+            3,
+        )
+        self.bucket_floor.elasticity = self.config.object_elasticity
+        self.bucket_wall.elasticity = self.config.object_elasticity
+        self.space.add(self.bucket_floor, self.bucket_wall)
 
-    env_fns = [make_env_fn(env_cfg, rank=i, base_seed=base_seed) for i in range(n_envs)]
-    vec_env_cls = SubprocVecEnv if use_subproc and n_envs > 1 else DummyVecEnv
-    vec_env = vec_env_cls(env_fns)
-    vec_env = VecTransposeImage(vec_env)
-    if frame_stack > 1:
-        vec_env = VecFrameStack(vec_env, n_stack=frame_stack)
-    return vec_env
+        # Robot
+        self.robot_body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+        self.robot_body.position = (self.screen_width // 4, self.screen_height - 50)
+        self.robot_shape = pymunk.Poly.create_box(
+            self.robot_body, (self.config.robot_width, self.config.robot_height)
+        )
+        self.robot_shape.elasticity = self.config.object_elasticity
+        self.space.add(self.robot_body, self.robot_shape)
 
+        self.arm_angle = self.config.arm_min
+        self.arm_shape = self._create_arm()
+        self.space.add(self.arm_shape)
 
-def record_gif(model, env_cfg, gif_path="play.gif", frame_stack=4, max_steps=1000):
-    """
-    Run a single evaluation episode and save it as a GIF.
-    """
-    # Create an environment with render_mode='rgb_array' so we can grab frames
-    env_cfg = dict(env_cfg)  # copy so we don't modify the original
-    env_cfg["render_mode"] = "rgb_array"
+        # Cannon
+        self.cannon_base = (self.screen_width - 40, self.screen_height - 50)
+        self._spawn_ball()
 
-    env = create_vec_env(env_cfg, n_envs=1, frame_stack=frame_stack, use_subproc=False)
-    obs = env.reset()
-    frames = []
+        self.score = 0
 
-    for _ in range(max_steps):
-        action, _ = model.predict(obs, deterministic=True)
-        obs, rewards, dones, infos = env.step(action)
+        # Reward
+        self.proximity_reward = self.config.proximity_reward
 
-        # Capture the rendered frame
-        frame = env.render(mode="rgb_array")[0]  # VecEnv returns a batch
-        frames.append(frame)
+    def _create_arm(self):
+        start = (
+            self.robot_body.position.x,
+            self.robot_body.position.y - self.config.robot_height / 2,
+        )
+        end = (
+            start[0] + self.config.arm_length * math.cos(math.radians(-self.arm_angle)),
+            start[1] - self.config.arm_length * math.sin(math.radians(-self.arm_angle)),
+        )
+        arm = pymunk.Segment(self.static_body, start, end, 5)
+        arm.elasticity = self.config.arm_elasticity
+        arm.friction = 0.5
+        return arm
 
-        if dones[0]:
-            break
+    def _spawn_ball(self):
+        # Use self.np_random if available, else fallback to random
+        rng = getattr(self, "np_random", np.random)
 
-    env.close()
+        angle = rng.integers(
+            self.config.cannon_angle_min, self.config.cannon_angle_max + 1
+        )
+        speed = rng.integers(
+            self.config.shoot_min_speed, self.config.shoot_max_speed + 1
+        )
+        rad = math.radians(angle)
 
-    # Save as GIF
-    imageio.mimsave(gif_path, frames, fps=env_cfg.get("fps", 30))
-    print(f"Saved evaluation GIF to: {gif_path}")
+        tip_x = self.cannon_base[0] - self.config.cannon_height * math.cos(rad)
+        tip_y = self.cannon_base[1] - self.config.cannon_height * math.sin(rad)
 
+        self.ball_body = pymunk.Body(
+            1, pymunk.moment_for_circle(1, 0, self.config.ball_radius)
+        )
+        self.ball_body.position = tip_x, tip_y
+        self.ball_shape = pymunk.Circle(self.ball_body, self.config.ball_radius)
+        self.ball_shape.elasticity = self.config.ball_elasticity
+        self.ball_shape.friction = 0.5
+        self.space.add(self.ball_body, self.ball_shape)
 
-class GifEvalCallback(EvalCallback):
-    def __init__(
-        self,
-        *args,
-        gif_path=None,
-        env_cfg=None,
-        frame_stack=4,
-        max_steps=1000,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self.gif_path = gif_path
-        self.env_cfg = env_cfg
-        self.frame_stack = frame_stack
-        self.max_steps = max_steps
+        self.ball_body.velocity = (-speed * math.cos(rad), -speed * math.sin(rad))
+        self.ball_body.velocity_func = (
+            lambda body, gravity, damping, dt: pymunk.Body.update_velocity(
+                body, gravity, self.config.drag, dt
+            )
+        )
+        self.next_cannon_angle = angle
 
-    def _on_step(self):
-        result = super()._on_step()
-        if self.n_calls % self.eval_freq == 0:
-            if self.gif_path:
-                path = f"{self.gif_path}/eval_{self.n_calls}.gif"
-                record_gif(
-                    self.model,
-                    self.env_cfg,
-                    gif_path=path,
-                    frame_stack=self.frame_stack,
-                    max_steps=self.max_steps,
-                )
-        return result
+    def reset(self, seed=None, options=None):
+        if seed is not None:
+            self.seed(seed)
+        self.space.remove(
+            self.robot_shape, self.arm_shape, self.ball_body, self.ball_shape
+        )
+        self._setup()
+        return self._get_obs(), {}
 
+    def _get_obs(self):
+        # Render the current state to an offscreen pygame surface
+        surface = pygame.Surface((self.screen_width, self.screen_height))
+        surface.fill((255, 255, 255))
 
-def create_eval_callback(env_cfg, save_path, n_stack=4, eval_freq=5000, base_seed=0):
-    """
-    Create a single-env evaluation callback.
-    """
-    eval_env = create_vec_env(
-        env_cfg, n_envs=1, frame_stack=n_stack, base_seed=base_seed, use_subproc=False
-    )
-    best_model_dir = os.path.dirname(save_path)
-    os.makedirs(best_model_dir, exist_ok=True)
-    return EvalCallback(
-        eval_env,
-        best_model_save_path=best_model_dir,
-        log_path=best_model_dir,
-        eval_freq=eval_freq,
-        deterministic=True,
-        render=False,
-    )
+        # Draw all objects (use same draw options as render)
+        self.space.debug_draw(pymunk.pygame_util.DrawOptions(surface))
 
+        # Convert pygame surface (W,H,3) → numpy array (H,W,3)
+        frame = pygame.surfarray.array3d(surface)
+        frame = np.transpose(frame, (1, 0, 2))
 
-def train_ppo(cfg):
-    """
-    Train PPO on RoboDunk with configurable parallel environments.
-    """
-    colab_cfg = cfg.get("colab", {})
-    env_cfg = cfg.get("env", {})
-    ppo_cfg = cfg.get("ppo", {})
-    train_cfg = cfg.get("train", {})
+        # Convert RGB to grayscale (still high-res, no resize)
+        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
 
-    # Handle Colab
-    ppo_cfg, train_cfg = setup_colab(colab_cfg, ppo_cfg, train_cfg)
+        # Add channel dimension → (H, W, 1)
+        obs = np.expand_dims(gray, axis=-1).astype(np.uint8)
 
-    # Tensorboard directory
-    if "tensorboard_log" in ppo_cfg and ppo_cfg["tensorboard_log"]:
-        os.makedirs(ppo_cfg["tensorboard_log"], exist_ok=True)
+        return obs
 
-    # Create vectorized envs
-    n_envs = train_cfg.get("n_envs", 1)
-    n_stack = train_cfg.get("frame_stack", 4)
-    base_seed = train_cfg.get("seed", 0)
-    vec_env = create_vec_env(
-        env_cfg,
-        n_envs=n_envs,
-        frame_stack=n_stack,
-        base_seed=base_seed,
-        use_subproc=True,
-    )
+    def step(self, action):
+        self._elapsed_steps += 1
 
-    # PPO model
-    policy = "CnnPolicy"
-    ppo_kwargs = {k: v for k, v in ppo_cfg.items() if k != "policy"}
+        if action[0]:
+            self.robot_body.position = (
+                self.robot_body.position.x - self.config.robot_speed,
+                self.robot_body.position.y,
+            )
+        if action[1]:
+            self.robot_body.position = (
+                self.robot_body.position.x + self.config.robot_speed,
+                self.robot_body.position.y,
+            )
+        if action[2]:
+            self.arm_angle = min(
+                self.config.arm_max, self.arm_angle + self.config.arm_speed
+            )
+        if action[3]:
+            self.arm_angle = max(
+                self.config.arm_min, self.arm_angle - self.config.arm_speed
+            )
 
-    # Force GPU usage if available
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-    model = PPO(policy, vec_env, device=device, **ppo_kwargs)
+        self.robot_body.position = (
+            max(
+                self.config.robot_width // 2,
+                min(
+                    self.screen_width // 2 - self.config.robot_width // 2,
+                    self.robot_body.position.x,
+                ),
+            ),
+            self.robot_body.position.y,
+        )
 
-    # Eval callback
-    save_path = train_cfg.get("save_path", "./models/ppo_robo_dunk")
-    eval_freq = train_cfg.get("eval_freq", 5000)
-    eval_callback = GifEvalCallback(
-        eval_env=create_vec_env(
-            env_cfg,
-            n_envs=1,
-            frame_stack=n_stack,
-            base_seed=base_seed,
-            use_subproc=False,
-        ),
-        best_model_save_path=os.path.dirname(save_path),
-        log_path=os.path.dirname(save_path),
-        eval_freq=eval_freq,
-        deterministic=True,
-        render=False,
-        gif_path=os.path.dirname(save_path),
-        env_cfg=env_cfg,
-        frame_stack=n_stack,
-        max_steps=env_cfg.get("max_episode_steps", 1000),
-    )
+        self.space.remove(self.arm_shape)
+        self.arm_shape = self._create_arm()
+        self.space.add(self.arm_shape)
 
-    # Log callback
-    logging_freq = train_cfg.get("logging_freq", 10)
+        self.space.step(1 / self.fps)
 
-    # Train
-    total_timesteps = train_cfg.get("total_timesteps", 200_000)
-    model.learn(
-        total_timesteps=total_timesteps,
-        callback=[eval_callback],
-        log_interval=logging_freq,
-    )
+        vx, vy = self.ball_body.velocity
+        speed = (vx**2 + vy**2) ** 0.5
+        if speed > self.config.max_ball_speed:
+            scale = self.config.max_ball_speed / speed
+            self.ball_body.velocity = vx * scale, vy * scale
 
-    # Save final model
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    model.save(save_path)
-    print("Training completed. Model saved to:", save_path)
+        reward = 0
+        terminated = False
 
-    return model
+        dist_to_bucket = self.bucket_floor.point_query(self.ball_body.position).distance
+
+        if dist_to_bucket <= self.config.ball_radius and self.ball_body.velocity.y > 0:
+            reward = 10
+            self.score += 1
+            self.space.remove(self.ball_body, self.ball_shape)
+            self._spawn_ball()
+        else:
+            reward = np.exp(-dist_to_bucket / self.proximity_reward)
+
+        if self._elapsed_steps >= self.max_episode_steps:
+            terminated = True
+
+        reward = float(reward)
+        return self._get_obs(), reward, terminated, False, {}
+
+    def render(self):
+        if self.render_mode != "human":
+            return
+        self.screen.fill((255, 255, 255))
+
+        # Conveyor belt
+        pygame.draw.line(
+            self.screen,
+            (0, 0, 0),
+            (0, self.screen_height - 40),
+            (self.screen_width // 2, self.screen_height - 40),
+            3,
+        )
+
+        # Cannon
+        angle = math.radians(self.next_cannon_angle)
+        offset = 5
+        tip_x = self.cannon_base[0] - self.config.cannon_height * math.cos(angle)
+        tip_y = self.cannon_base[1] - self.config.cannon_height * math.sin(angle)
+        left_bar_start = (
+            self.cannon_base[0] - offset * math.sin(angle),
+            self.cannon_base[1] + offset * math.cos(angle),
+        )
+        left_bar_end = (
+            tip_x - offset * math.sin(angle),
+            tip_y + offset * math.cos(angle),
+        )
+        right_bar_start = (
+            self.cannon_base[0] + offset * math.sin(angle),
+            self.cannon_base[1] - offset * math.cos(angle),
+        )
+        right_bar_end = (
+            tip_x + offset * math.sin(angle),
+            tip_y - offset * math.cos(angle),
+        )
+        pygame.draw.line(self.screen, (34, 139, 34), left_bar_start, left_bar_end, 3)
+        pygame.draw.line(self.screen, (34, 139, 34), right_bar_start, right_bar_end, 3)
+
+        # Physics objects
+        self.space.debug_draw(self.draw_options)
+
+        # --- Draw the score bar ---
+        font = pygame.font.Font(None, 28)  # default font, size 28
+        text = font.render(f"Score: {self.score}", True, (0, 0, 0))  # black text
+        self.screen.blit(text, (10, 10))  # top-left corner
+
+        # Update Display
+        pygame.display.flip()
+        self.clock.tick(self.config.fps)
+
+    def close(self):
+        pygame.quit()
