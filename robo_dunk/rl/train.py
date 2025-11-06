@@ -75,7 +75,7 @@ def create_vec_env(env_cfg, n_envs=1, frame_stack=4, base_seed=0, use_subproc=Tr
     return vec_env
 
 
-def record_gif(model, env_cfg, gif_path="play.gif", max_steps=1000):
+def record_gif(model, env_cfg, gif_path="play.gif", frame_stack=4, max_steps=1000):
     """
     Run a single evaluation episode and save it as a GIF.
     """
@@ -83,7 +83,7 @@ def record_gif(model, env_cfg, gif_path="play.gif", max_steps=1000):
     env_cfg = dict(env_cfg)  # copy so we don't modify the original
     env_cfg["render_mode"] = "rgb_array"
 
-    env = create_vec_env(env_cfg, n_envs=1, frame_stack=1, use_subproc=False)
+    env = create_vec_env(env_cfg, n_envs=1, frame_stack=frame_stack, use_subproc=False)
     obs = env.reset()
     frames = []
 
@@ -106,17 +106,33 @@ def record_gif(model, env_cfg, gif_path="play.gif", max_steps=1000):
 
 
 class GifEvalCallback(EvalCallback):
-    def __init__(self, *args, gif_path=None, env_cfg=None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        gif_path=None,
+        env_cfg=None,
+        frame_stack=4,
+        max_steps=1000,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.gif_path = gif_path
         self.env_cfg = env_cfg
+        self.frame_stack = frame_stack
+        self.max_steps = max_steps
 
     def _on_step(self):
         result = super()._on_step()
         if self.n_calls % self.eval_freq == 0:
             if self.gif_path:
                 path = f"{self.gif_path}/eval_{self.n_calls}.gif"
-                record_gif(self.model, self.env_cfg, path)
+                record_gif(
+                    self.model,
+                    self.env_cfg,
+                    gif_path=path,
+                    frame_stack=self.frame_stack,
+                    max_steps=self.max_steps,
+                )
         return result
 
 
@@ -194,6 +210,8 @@ def train_ppo(cfg):
         render=False,
         gif_path=os.path.dirname(save_path),
         env_cfg=env_cfg,
+        frame_stack=n_stack,
+        max_steps=env_cfg.get("max_episode_steps", 1000),
     )
 
     # Log callback
