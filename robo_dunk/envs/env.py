@@ -2,6 +2,7 @@ import math
 import random
 from dataclasses import dataclass
 
+import cv2
 import gymnasium as gym
 import numpy as np
 import pygame
@@ -63,29 +64,18 @@ class RoboDunkEnv(gym.Env):
         self.fps = self.config.fps
 
         self.action_space = spaces.MultiBinary(4)
-        low = np.array(
-            [
-                0,
-                self.config.arm_min,
-                0,
-                0,
-                -self.config.max_ball_speed,
-                -self.config.max_ball_speed,
-            ],
-            dtype=np.float32,
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(self.screen_height, self.screen_width, 1),
+            dtype=np.uint8,
         )
-        high = np.array(
-            [
-                self.screen_width // 2,
-                self.config.arm_max,
-                self.screen_width,
-                self.screen_height,
-                self.config.max_ball_speed,
-                self.config.max_ball_speed,
-            ],
-            dtype=np.float32,
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(self.screen_height, self.screen_width, 1),
+            dtype=np.uint8,
         )
-        self.observation_space = spaces.Box(low, high, dtype=np.float32)
 
         self._setup()
 
@@ -206,17 +196,24 @@ class RoboDunkEnv(gym.Env):
         return self._get_obs(), {}
 
     def _get_obs(self):
-        return np.array(
-            [
-                self.robot_body.position.x,
-                self.arm_angle,
-                self.ball_body.position.x,
-                self.ball_body.position.y,
-                self.ball_body.velocity.x,
-                self.ball_body.velocity.y,
-            ],
-            dtype=np.float32,
-        )
+        # Render the current state to an offscreen pygame surface
+        surface = pygame.Surface((self.screen_width, self.screen_height))
+        surface.fill((255, 255, 255))
+
+        # Draw all objects (use same draw options as render)
+        self.space.debug_draw(pymunk.pygame_util.DrawOptions(surface))
+
+        # Convert pygame surface (W,H,3) → numpy array (H,W,3)
+        frame = pygame.surfarray.array3d(surface)
+        frame = np.transpose(frame, (1, 0, 2))
+
+        # Convert RGB to grayscale (still high-res, no resize)
+        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+
+        # Add channel dimension → (H, W, 1)
+        obs = np.expand_dims(gray, axis=-1).astype(np.uint8)
+
+        return obs
 
     def step(self, action):
         if action[0]:
@@ -325,6 +322,13 @@ class RoboDunkEnv(gym.Env):
 
         # Physics objects
         self.space.debug_draw(self.draw_options)
+
+        # --- Draw the score bar ---
+        font = pygame.font.Font(None, 28)  # default font, size 28
+        text = font.render(f"Score: {self.score}", True, (0, 0, 0))  # black text
+        self.screen.blit(text, (10, 10))  # top-left corner
+
+        # Update Display
         pygame.display.flip()
         self.clock.tick(self.config.fps)
 

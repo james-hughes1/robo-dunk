@@ -16,13 +16,13 @@ def test_env_initialization(env):
     assert env.screen_width == env.config.screen_width
     assert env.screen_height == env.config.screen_height
     assert env.action_space.shape == (4,)
-    assert env.observation_space.shape == (6,)
+    assert env.observation_space.shape == (400, 400, 1)
 
 
 def test_reset_returns_valid_observation(env):
     obs, _ = env.reset()
     assert isinstance(obs, np.ndarray)
-    assert obs.shape == (6,)
+    assert obs.shape == (400, 400, 1)
     assert env.observation_space.contains(obs)
 
 
@@ -31,7 +31,7 @@ def test_step_returns_valid_outputs(env):
     action = np.array([0, 1, 0, 1], dtype=np.int8)
     next_obs, reward, terminated, truncated, info = env.step(action)
     assert isinstance(next_obs, np.ndarray)
-    assert next_obs.shape == (6,)
+    assert next_obs.shape == (400, 400, 1)
     assert isinstance(reward, (int, float))
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
