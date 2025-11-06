@@ -100,5 +100,5 @@ def test_train_ppo_env_step(train_cfg):
         obs, rewards, dones, infos = vec_env.step(actions)
         assert obs.shape[0] == vec_env.num_envs
         assert isinstance(rewards[0], (float, np.floating))
-        assert isinstance(dones[0], bool)
+        assert isinstance(dones[0], np.bool_)
         assert isinstance(infos[0], dict)
