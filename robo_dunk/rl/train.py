@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 
 from stable_baselines3 import PPO
@@ -5,6 +6,7 @@ from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
+    SubprocVecEnv,
     VecFrameStack,
     VecTransposeImage,
 )
@@ -14,15 +16,15 @@ from robo_dunk.rl.preprocessing import GrayScaleObservation, ResizeObservation
 from robo_dunk.rl.utils import setup_colab
 
 
-def make_env_fn(env_cfg):
+def make_env_fn(env_cfg, rank=0, base_seed=0):
     """
-    Return a function that creates an env. This is used by DummyVecEnv.
-    We apply GrayScaleObservation and ResizeObservation here so each env
-    produces (96,96,1) images (H,W,C) which SB3 VecTransposeImage will then
-    convert to (C,H,W).
+    Return a function that creates an env. Each env gets a unique seed
+    for reproducibility across runs.
     """
 
     def _init():
+        seed = base_seed + rank
+
         config = RoboDunkConfig(
             screen_width=env_cfg.get("screen_width", 400),
             screen_height=env_cfg.get("screen_height", 400),
@@ -32,32 +34,51 @@ def make_env_fn(env_cfg):
             bucket_width=env_cfg.get("bucket_width", 100),
             bucket_y=env_cfg.get("bucket_y", 250),
         )
-        # render_mode should be None for training; set "human" if you want visualization
+
+        # render_mode=None for training
         env = RoboDunkEnv(render_mode=env_cfg.get("render_mode", None), config=config)
 
-        # Convert to grayscale and resize to desired model input (96x96)
-        # Keep channel dim so shape is (H, W, 1)
+        # Apply custom grayscale + resize wrappers
         env = GrayScaleObservation(env, keep_dim=True)
         env = ResizeObservation(env, env_cfg.get("resize", (96, 96)))
 
-        # Monitor for logging episode rewards / lengths
+        # Monitor logs & set seed for reproducibility
         env = Monitor(env)
+        env.reset(seed=seed)
         return env
 
     return _init
 
 
-def create_vec_env(env_cfg, n_envs=1, frame_stack=4):
-    env_fns = [make_env_fn(env_cfg) for _ in range(n_envs)]
-    vec_env = DummyVecEnv(env_fns)
+def create_vec_env(env_cfg, n_envs=1, frame_stack=4, base_seed=0, use_subproc=True):
+    """
+    Create a vectorized environment with optional SubprocVecEnv.
+    Caps n_envs to available CPU cores if using SubprocVecEnv.
+    """
+    max_cores = multiprocessing.cpu_count()
+    if use_subproc and n_envs > max_cores:
+        print(
+            f"n_envs={n_envs} exceeds CPU cores={max_cores}. "
+            f"Capping to {max_cores} for efficiency."
+        )
+        n_envs = max_cores
+
+    env_fns = [make_env_fn(env_cfg, rank=i, base_seed=base_seed) for i in range(n_envs)]
+    vec_env_cls = SubprocVecEnv if use_subproc and n_envs > 1 else DummyVecEnv
+    vec_env = vec_env_cls(env_fns)
     vec_env = VecTransposeImage(vec_env)
     if frame_stack > 1:
         vec_env = VecFrameStack(vec_env, n_stack=frame_stack)
     return vec_env
 
 
-def create_eval_callback(env_cfg, save_path, n_stack=4, eval_freq=5000):
-    eval_env = create_vec_env(env_cfg, n_envs=1, frame_stack=n_stack)
+def create_eval_callback(env_cfg, save_path, n_stack=4, eval_freq=5000, base_seed=0):
+    """
+    Create a single-env evaluation callback.
+    """
+    eval_env = create_vec_env(
+        env_cfg, n_envs=1, frame_stack=n_stack, base_seed=base_seed, use_subproc=False
+    )
     best_model_dir = os.path.dirname(save_path)
     os.makedirs(best_model_dir, exist_ok=True)
     return EvalCallback(
@@ -71,37 +92,43 @@ def create_eval_callback(env_cfg, save_path, n_stack=4, eval_freq=5000):
 
 
 def train_ppo(cfg):
+    """
+    Train PPO on RoboDunk with configurable parallel environments.
+    """
     colab_cfg = cfg.get("colab", {})
     env_cfg = cfg.get("env", {})
     ppo_cfg = cfg.get("ppo", {})
     train_cfg = cfg.get("train", {})
 
-    # Policy
-    policy = "CnnPolicy"
-
     # Handle Colab
     ppo_cfg, train_cfg = setup_colab(colab_cfg, ppo_cfg, train_cfg)
 
-    # Tensorboard dir
+    # Tensorboard directory
     if "tensorboard_log" in ppo_cfg and ppo_cfg["tensorboard_log"]:
         os.makedirs(ppo_cfg["tensorboard_log"], exist_ok=True)
 
-    # Create vectorized env
+    # Create vectorized envs
     n_envs = train_cfg.get("n_envs", 1)
     n_stack = train_cfg.get("frame_stack", 4)
-    vec_env = create_vec_env(env_cfg, n_envs=n_envs, frame_stack=n_stack)
+    base_seed = train_cfg.get("seed", 0)
+    vec_env = create_vec_env(
+        env_cfg,
+        n_envs=n_envs,
+        frame_stack=n_stack,
+        base_seed=base_seed,
+        use_subproc=True,
+    )
 
-    # Prepare PPO kwargs
+    # PPO model
+    policy = "CnnPolicy"
     ppo_kwargs = {k: v for k, v in ppo_cfg.items() if k != "policy"}
-
-    # Create PPO model
     model = PPO(policy, vec_env, **ppo_kwargs)
 
     # Eval callback
-    eval_freq = train_cfg.get("eval_freq", 5000)
     save_path = train_cfg.get("save_path", "./models/ppo_robo_dunk")
+    eval_freq = train_cfg.get("eval_freq", 5000)
     eval_callback = create_eval_callback(
-        env_cfg, save_path, n_stack=n_stack, eval_freq=eval_freq
+        env_cfg, save_path, n_stack=n_stack, eval_freq=eval_freq, base_seed=base_seed
     )
 
     # Train
@@ -112,4 +139,5 @@ def train_ppo(cfg):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     model.save(save_path)
     print("Training completed. Model saved to:", save_path)
+
     return model

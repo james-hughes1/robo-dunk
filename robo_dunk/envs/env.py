@@ -79,6 +79,13 @@ class RoboDunkEnv(gym.Env):
 
         self._setup()
 
+    def seed(self, seed=None):
+        """Seed RNGs for reproducible behavior."""
+        self._seed = seed
+        self.np_random, seed_ = gym.utils.seeding.np_random(seed)
+        random.seed(seed)  # python random
+        return [seed_]
+
     def _setup(self):
         pygame.init()
         if self.render_mode == "human":
@@ -165,13 +172,16 @@ class RoboDunkEnv(gym.Env):
         return arm
 
     def _spawn_ball(self):
-        angle = random.randint(
-            self.config.cannon_angle_min, self.config.cannon_angle_max
-        )
-        speed = random.randint(self.config.shoot_min_speed, self.config.shoot_max_speed)
+        # Use self.np_random if available, else fallback to random
+        rng = getattr(self, "np_random", np.random)
+
+        angle = rng.randint(self.config.cannon_angle_min, self.config.cannon_angle_max)
+        speed = rng.randint(self.config.shoot_min_speed, self.config.shoot_max_speed)
         rad = math.radians(angle)
+
         tip_x = self.cannon_base[0] - self.config.cannon_height * math.cos(rad)
         tip_y = self.cannon_base[1] - self.config.cannon_height * math.sin(rad)
+
         self.ball_body = pymunk.Body(
             1, pymunk.moment_for_circle(1, 0, self.config.ball_radius)
         )
@@ -180,6 +190,7 @@ class RoboDunkEnv(gym.Env):
         self.ball_shape.elasticity = self.config.ball_elasticity
         self.ball_shape.friction = 0.5
         self.space.add(self.ball_body, self.ball_shape)
+
         self.ball_body.velocity = (-speed * math.cos(rad), -speed * math.sin(rad))
         self.ball_body.velocity_func = (
             lambda body, gravity, damping, dt: pymunk.Body.update_velocity(
@@ -189,6 +200,8 @@ class RoboDunkEnv(gym.Env):
         self.next_cannon_angle = angle
 
     def reset(self, seed=None, options=None):
+        if seed is not None:
+            self.seed(seed)
         self.space.remove(
             self.robot_shape, self.arm_shape, self.ball_body, self.ball_shape
         )
