@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 
+import imageio
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback
@@ -74,6 +75,52 @@ def create_vec_env(env_cfg, n_envs=1, frame_stack=4, base_seed=0, use_subproc=Tr
     return vec_env
 
 
+def record_gif(model, env_cfg, gif_path="play.gif", max_steps=1000):
+    """
+    Run a single evaluation episode and save it as a GIF.
+    """
+    # Create an environment with render_mode='rgb_array' so we can grab frames
+    env_cfg = dict(env_cfg)  # copy so we don't modify the original
+    env_cfg["render_mode"] = "rgb_array"
+
+    env = create_vec_env(env_cfg, n_envs=1, frame_stack=1, use_subproc=False)
+    obs = env.reset()
+    frames = []
+
+    for _ in range(max_steps):
+        action, _ = model.predict(obs, deterministic=True)
+        obs, rewards, dones, infos = env.step(action)
+
+        # Capture the rendered frame
+        frame = env.render(mode="rgb_array")[0]  # VecEnv returns a batch
+        frames.append(frame)
+
+        if dones[0]:
+            break
+
+    env.close()
+
+    # Save as GIF
+    imageio.mimsave(gif_path, frames, fps=env_cfg.get("fps", 30))
+    print(f"Saved evaluation GIF to: {gif_path}")
+
+
+class GifEvalCallback(EvalCallback):
+    def __init__(self, *args, gif_path=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.gif_path = gif_path
+
+    def _on_step(self):
+        result = super()._on_step()
+        if self.n_calls % self.eval_freq == 0:
+            if self.gif_path:
+                path = f"{self.gif_path}/eval_{self.n_calls}.gif"
+                record_gif(
+                    self.model, self.eval_env.env_method("get_attr", "config")[0], path
+                )
+        return result
+
+
 def create_eval_callback(env_cfg, save_path, n_stack=4, eval_freq=5000, base_seed=0):
     """
     Create a single-env evaluation callback.
@@ -133,8 +180,20 @@ def train_ppo(cfg):
     # Eval callback
     save_path = train_cfg.get("save_path", "./models/ppo_robo_dunk")
     eval_freq = train_cfg.get("eval_freq", 5000)
-    eval_callback = create_eval_callback(
-        env_cfg, save_path, n_stack=n_stack, eval_freq=eval_freq, base_seed=base_seed
+    eval_callback = GifEvalCallback(
+        eval_env=create_vec_env(
+            env_cfg,
+            n_envs=1,
+            frame_stack=n_stack,
+            base_seed=base_seed,
+            use_subproc=False,
+        ),
+        best_model_save_path=os.path.dirname(save_path),
+        log_path=os.path.dirname(save_path),
+        eval_freq=eval_freq,
+        deterministic=True,
+        render=False,
+        gif_path=os.path.dirname(save_path),
     )
 
     # Log callback
