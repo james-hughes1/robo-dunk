@@ -9,7 +9,7 @@ from stable_baselines3.common.vec_env import (
     VecTransposeImage,
 )
 
-from robo_dunk.rl.envs.env import RoboDunkConfig, RoboDunkEnv
+from robo_dunk.envs.env import RoboDunkConfig, RoboDunkEnv
 from robo_dunk.rl.preprocessing import GrayScaleObservation, ResizeObservation
 from robo_dunk.rl.utils import setup_colab
 
