@@ -51,6 +51,7 @@ class RoboDunkConfig:
 
     # General
     object_elasticity: float = 0.5
+    proximity_reward: float = 10.0
 
 
 class RoboDunkEnv(gym.Env):
@@ -163,6 +164,9 @@ class RoboDunkEnv(gym.Env):
         self._spawn_ball()
 
         self.score = 0
+
+        # Reward
+        self.proximity_reward = self.config.proximity_reward
 
     def _create_arm(self):
         start = (
@@ -287,24 +291,15 @@ class RoboDunkEnv(gym.Env):
         reward = 0
         terminated = False
 
-        if (
-            self.bucket_floor.point_query(self.ball_body.position).distance
-            <= self.config.ball_radius
-            and self.ball_body.velocity.y > 0
-        ):
+        dist_to_bucket = self.bucket_floor.point_query(self.ball_body.position).distance
+
+        if dist_to_bucket <= self.config.ball_radius and self.ball_body.velocity.y > 0:
             reward = 10
             self.score += 1
             self.space.remove(self.ball_body, self.ball_shape)
             self._spawn_ball()
-        elif self.ball_body.position.y > self.screen_height + 50:
-            reward = -5
-            self.space.remove(self.ball_body, self.ball_shape)
-            self._spawn_ball()
         else:
-            dist = abs(
-                self.ball_body.position.x - (self.bucket_x - self.bucket_width / 2)
-            )
-            reward = max(0, 1 - dist / self.screen_width)
+            reward = np.exp(-dist_to_bucket / self.proximity_reward)
 
         if self._elapsed_steps >= self.max_episode_steps:
             terminated = True

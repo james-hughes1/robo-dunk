@@ -60,13 +60,6 @@ def test_arm_angle_bounds(env):
     assert env.arm_angle <= env.config.arm_max
 
 
-def test_ball_respawn_on_loss(env):
-    env.reset()
-    env.ball_body.position = (env.screen_width // 2, env.screen_height + 100)
-    _, reward, _, _, _ = env.step(np.array([0, 0, 0, 0], dtype=np.int8))
-    assert reward == -5
-
-
 def test_ball_dunk_reward(env):
     env.reset()
     env.ball_body.position = (
@@ -82,7 +75,7 @@ def test_proximity_reward(env):
     env.reset()
     env.ball_body.position = (
         env.bucket_x - env.bucket_width // 2 + 10,
-        env.bucket_y,
+        env.bucket_y - 10,
     )
     env.ball_body.velocity = (0, -100)
     _, reward, _, _, _ = env.step(np.array([0, 0, 0, 0], dtype=np.int8))
