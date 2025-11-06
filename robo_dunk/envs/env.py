@@ -175,8 +175,12 @@ class RoboDunkEnv(gym.Env):
         # Use self.np_random if available, else fallback to random
         rng = getattr(self, "np_random", np.random)
 
-        angle = rng.randint(self.config.cannon_angle_min, self.config.cannon_angle_max)
-        speed = rng.randint(self.config.shoot_min_speed, self.config.shoot_max_speed)
+        angle = rng.integers(
+            self.config.cannon_angle_min, self.config.cannon_angle_max + 1
+        )
+        speed = rng.integers(
+            self.config.shoot_min_speed, self.config.shoot_max_speed + 1
+        )
         rad = math.radians(angle)
 
         tip_x = self.cannon_base[0] - self.config.cannon_height * math.cos(rad)
