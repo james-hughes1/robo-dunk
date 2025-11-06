@@ -10,16 +10,6 @@ def setup_colab(colab_cfg, ppo_cfg, train_cfg):
     if not colab_cfg.get("enabled", False):
         return ppo_cfg, train_cfg
 
-    try:
-        from google.colab import drive
-
-        drive.mount(
-            colab_cfg.get("drive_mount_point", "/content/drive"), force_remount=True
-        )
-    except Exception as e:
-        print("Could not mount Google Drive: ", e)
-        return ppo_cfg, train_cfg
-
     # Base path for project in Drive
     drive_path = os.path.join(
         colab_cfg.get("drive_mount_point", "/content/drive"),
