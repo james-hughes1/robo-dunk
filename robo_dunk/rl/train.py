@@ -34,6 +34,7 @@ def make_env_fn(env_cfg, rank=0, base_seed=0):
             bucket_height=env_cfg.get("bucket_height", 10),
             bucket_width=env_cfg.get("bucket_width", 100),
             bucket_y=env_cfg.get("bucket_y", 250),
+            max_episode_steps=env_cfg.get("max_episode_steps", 1000),
         )
 
         # render_mode=None for training

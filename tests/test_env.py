@@ -87,3 +87,23 @@ def test_proximity_reward(env):
     env.ball_body.velocity = (0, -100)
     _, reward, _, _, _ = env.step(np.array([0, 0, 0, 0], dtype=np.int8))
     assert 0 < reward < 1
+
+
+def test_robo_dunk_env_episode_termination():
+    max_steps = 10
+    env = RoboDunkEnv(
+        render_mode=None, config=RoboDunkConfig(max_episode_steps=max_steps)
+    )
+
+    obs, info = env.reset()
+
+    terminated = False
+    for _ in range(max_steps):
+        action = env.action_space.sample()
+        assert terminated is False
+        obs, reward, terminated, truncated, info = env.step(action)
+
+    # After max_steps, the next step should trigger termination
+    assert terminated is True
+
+    env.close()

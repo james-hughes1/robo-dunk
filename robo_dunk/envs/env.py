@@ -13,9 +13,11 @@ from gymnasium import spaces
 
 @dataclass
 class RoboDunkConfig:
+    # Game
     screen_width: int = 400
     screen_height: int = 400
     fps: int = 60
+    max_episode_steps: int = 1000
 
     # Robot
     robot_width: int = 50
@@ -62,6 +64,9 @@ class RoboDunkEnv(gym.Env):
         self.screen_height = self.config.screen_height
         self.clock = pygame.time.Clock()
         self.fps = self.config.fps
+        self.max_episode_steps = self.config.max_episode_steps
+
+        self._elapsed_steps = 0
 
         self.action_space = spaces.MultiBinary(4)
         self.observation_space = spaces.Box(
@@ -233,6 +238,8 @@ class RoboDunkEnv(gym.Env):
         return obs
 
     def step(self, action):
+        self._elapsed_steps += 1
+
         if action[0]:
             self.robot_body.position = (
                 self.robot_body.position.x - self.config.robot_speed,
@@ -296,6 +303,9 @@ class RoboDunkEnv(gym.Env):
                 self.ball_body.position.x - (self.bucket_x - self.bucket_width / 2)
             )
             reward = max(0, 1 - dist / self.screen_width)
+
+        if self._elapsed_steps >= self.max_episode_steps:
+            terminated = True
 
         reward = float(reward)
         return self._get_obs(), reward, terminated, False, {}

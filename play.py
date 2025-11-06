@@ -1,9 +1,11 @@
 import numpy as np
 import pygame
 
-from robo_dunk.envs.env import RoboDunkEnv
+from robo_dunk.envs.env import RoboDunkConfig, RoboDunkEnv
 
-env = RoboDunkEnv(render_mode="human")
+play_config = RoboDunkConfig(max_episode_steps=1000)
+
+env = RoboDunkEnv(render_mode="human", config=play_config)
 obs, _ = env.reset()
 
 running = True
@@ -26,6 +28,8 @@ while running:
         action[3] = 1
 
     obs, reward, terminated, truncated, info = env.step(action)
+    if terminated:
+        running = False
     env.render()
 
 env.close()
