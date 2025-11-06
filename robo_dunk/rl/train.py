@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 
+import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.monitor import Monitor
@@ -122,7 +123,11 @@ def train_ppo(cfg):
     # PPO model
     policy = "CnnPolicy"
     ppo_kwargs = {k: v for k, v in ppo_cfg.items() if k != "policy"}
-    model = PPO(policy, vec_env, **ppo_kwargs)
+
+    # Force GPU usage if available
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
+    model = PPO(policy, vec_env, device=device, **ppo_kwargs)
 
     # Eval callback
     save_path = train_cfg.get("save_path", "./models/ppo_robo_dunk")
