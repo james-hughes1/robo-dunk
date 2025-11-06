@@ -297,6 +297,7 @@ class RoboDunkEnv(gym.Env):
             )
             reward = max(0, 1 - dist / self.screen_width)
 
+        reward = float(reward)
         return self._get_obs(), reward, terminated, False, {}
 
     def render(self):
