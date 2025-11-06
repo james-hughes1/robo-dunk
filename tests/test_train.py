@@ -1,4 +1,4 @@
-# test_train.py
+import multiprocessing
 import os
 from unittest import mock
 
@@ -102,3 +102,41 @@ def test_train_ppo_env_step(train_cfg):
         assert isinstance(rewards[0], (float, np.floating))
         assert isinstance(dones[0], np.bool_)
         assert isinstance(infos[0], dict)
+
+
+def test_vec_env_caps_n_envs(monkeypatch):
+    env_cfg = {"screen_width": 64, "screen_height": 64}  # minimal env config
+    n_envs_requested = multiprocessing.cpu_count() + 5  # intentionally too high
+    frame_stack = 1
+    base_seed = 0
+
+    # Capture printed warnings
+    messages = []
+    monkeypatch.setattr("builtins.print", lambda msg: messages.append(msg))
+
+    vec_env = train.create_vec_env(
+        env_cfg, n_envs=n_envs_requested, frame_stack=frame_stack, base_seed=base_seed
+    )
+
+    # n_envs should be capped at CPU cores
+    assert vec_env.num_envs == multiprocessing.cpu_count()
+    assert any("n_envs=" in m for m in messages)
+
+
+def test_env_seed_reproducibility():
+    env_cfg = {"screen_width": 64, "screen_height": 64}
+    n_envs = 2
+    base_seed = 123
+
+    vec_env1 = train.create_vec_env(
+        env_cfg, n_envs=n_envs, base_seed=base_seed, use_subproc=False
+    )
+    vec_env2 = train.create_vec_env(
+        env_cfg, n_envs=n_envs, base_seed=base_seed, use_subproc=False
+    )
+
+    obs1 = vec_env1.reset()
+    obs2 = vec_env2.reset()
+
+    # Observations should match across runs with same base_seed
+    assert np.allclose(obs1, obs2)
