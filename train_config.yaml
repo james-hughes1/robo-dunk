@@ -1,5 +1,5 @@
 colab:
-  enabled: false
+  enabled: true
   drive_mount_point: "/content/drive"
   drive_project_dir: "MyDrive/robo_dunk_rl"
 
