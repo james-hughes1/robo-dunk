@@ -106,18 +106,17 @@ def record_gif(model, env_cfg, gif_path="play.gif", max_steps=1000):
 
 
 class GifEvalCallback(EvalCallback):
-    def __init__(self, *args, gif_path=None, **kwargs):
+    def __init__(self, *args, gif_path=None, env_cfg=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.gif_path = gif_path
+        self.env_cfg = env_cfg
 
     def _on_step(self):
         result = super()._on_step()
         if self.n_calls % self.eval_freq == 0:
             if self.gif_path:
                 path = f"{self.gif_path}/eval_{self.n_calls}.gif"
-                record_gif(
-                    self.model, self.eval_env.env_method("get_attr", "config")[0], path
-                )
+                record_gif(self.model, self.env_cfg, path)
         return result
 
 
@@ -194,6 +193,7 @@ def train_ppo(cfg):
         deterministic=True,
         render=False,
         gif_path=os.path.dirname(save_path),
+        env_cfg=env_cfg,
     )
 
     # Log callback
