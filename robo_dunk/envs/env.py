@@ -32,19 +32,19 @@ class RoboDunkConfig:
     # Ball
     ball_radius: int = 8
     shoot_min_speed: int = 400
-    shoot_max_speed: int = 500
-    max_ball_speed: int = 600
+    shoot_max_speed: int = 600
+    max_ball_speed: int = 700
     ball_elasticity: float = 1.0
     drag: float = 0.99
 
     # Cannon
     cannon_width: int = 6
     cannon_height: int = 30
-    cannon_angle_min: int = 40
-    cannon_angle_max: int = 50
+    cannon_angle_min: int = 35
+    cannon_angle_max: int = 55
 
     # Bucket
-    bucket_height: int = 10
+    bucket_height: int = 20
     bucket_width: int = 100
     bucket_x: int = 400
     bucket_y: int = 250
@@ -52,6 +52,7 @@ class RoboDunkConfig:
     # General
     object_elasticity: float = 0.5
     proximity_reward: float = 10.0
+    time_penalty: float = 0.01
 
 
 class RoboDunkEnv(gym.Env):
@@ -167,6 +168,7 @@ class RoboDunkEnv(gym.Env):
 
         # Reward
         self.proximity_reward = self.config.proximity_reward
+        self.time_penalty = self.config.time_penalty
 
     def _create_arm(self):
         start = (
@@ -246,6 +248,7 @@ class RoboDunkEnv(gym.Env):
     def step(self, action):
         self._elapsed_steps += 1
 
+        # --- Handle Robot Movement ---
         if action[0]:
             self.robot_body.position = (
                 self.robot_body.position.x - self.config.robot_speed,
@@ -265,6 +268,7 @@ class RoboDunkEnv(gym.Env):
                 self.config.arm_min, self.arm_angle - self.config.arm_speed
             )
 
+        # Keep robot within bounds
         self.robot_body.position = (
             max(
                 self.config.robot_width // 2,
@@ -276,12 +280,15 @@ class RoboDunkEnv(gym.Env):
             self.robot_body.position.y,
         )
 
+        # Update arm
         self.space.remove(self.arm_shape)
         self.arm_shape = self._create_arm()
         self.space.add(self.arm_shape)
 
+        # Step simulation
         self.space.step(1 / self.fps)
 
+        # Clamp ball speed
         vx, vy = self.ball_body.velocity
         speed = (vx**2 + vy**2) ** 0.5
         if speed > self.config.max_ball_speed:
@@ -291,8 +298,8 @@ class RoboDunkEnv(gym.Env):
         reward = 0
         terminated = False
 
+        # --- Check if ball scored ---
         dist_to_bucket = self.bucket_floor.point_query(self.ball_body.position).distance
-
         if dist_to_bucket <= self.config.ball_radius and self.ball_body.velocity.y > 0:
             reward = 10
             self.score += 1
@@ -301,8 +308,21 @@ class RoboDunkEnv(gym.Env):
         else:
             reward = np.exp(-dist_to_bucket / self.proximity_reward)
 
+        # --- Penalize if ball hits ground ---
+        if (
+            self.ball_body.position.y
+            >= self.screen_height - self.config.ball_radius - 1
+        ):
+            reward -= 5  # strong penalty
+            self.space.remove(self.ball_body, self.ball_shape)
+            self._spawn_ball()
+
+        # --- End episode if too long ---
         if self._elapsed_steps >= self.max_episode_steps:
             terminated = True
+
+        # --- Time step penalty ---
+        reward -= self.time_penalty
 
         reward = float(reward)
         return self._get_obs(), reward, terminated, False, {}
