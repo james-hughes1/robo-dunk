@@ -65,7 +65,7 @@ def test_create_vec_env(env_cfg):
     obs = vec_env.reset()
     assert obs.shape[0] == 2  # batch size
     assert obs.shape[1] == 2  # frame_stack dimension
-    assert obs.shape[2:] == (1, 96, 96)  # channel, H, W
+    assert obs.shape[2:] == (96, 96)  # channel, H, W
 
 
 def test_create_eval_callback(tmp_path, env_cfg):
@@ -74,7 +74,7 @@ def test_create_eval_callback(tmp_path, env_cfg):
     assert hasattr(callback, "eval_env")
     # ensure eval_env is a vectorized env
     obs = callback.eval_env.reset()
-    assert obs.shape[1:] == (2, 1, 96, 96)  # frame_stack, C,H,W
+    assert obs.shape[1:] == (2, 96, 96)  # frame_stack, C,H,W
 
 
 def test_train_ppo_runs_fast(train_cfg):
@@ -97,9 +97,8 @@ def test_train_ppo_env_step(train_cfg):
         vec_env = model.get_env()
         obs = vec_env.reset()
         actions = [vec_env.action_space.sample() for _ in range(vec_env.num_envs)]
-        obs, rewards, terminateds, truncateds, infos = vec_env.step(actions)
+        obs, rewards, dones, infos = vec_env.step(actions)
         assert obs.shape[0] == vec_env.num_envs
         assert isinstance(rewards[0], (float, np.floating))
-        assert isinstance(terminateds[0], bool)
-        assert isinstance(truncateds[0], bool)
+        assert isinstance(dones[0], bool)
         assert isinstance(infos[0], dict)
