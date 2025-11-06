@@ -1,6 +1,5 @@
 import os
 
-from preprocessing import GrayScaleObservation, ResizeObservation
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.monitor import Monitor
@@ -11,6 +10,7 @@ from stable_baselines3.common.vec_env import (
 )
 
 from envs.env import RoboDunkConfig, RoboDunkEnv
+from rl.preprocessing import GrayScaleObservation, ResizeObservation
 from rl.utils import setup_colab
 
 
