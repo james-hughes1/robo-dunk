@@ -102,6 +102,8 @@ class RoboDunkEnv(gym.Env):
         else:
             self.screen = None
 
+        self._elapsed_steps = 0
+
         self.space = pymunk.Space()
         self.space.gravity = (0, 400)
         self.static_body = self.space.static_body
