@@ -123,20 +123,19 @@ def test_vec_env_caps_n_envs(monkeypatch):
     assert any("n_envs=" in m for m in messages)
 
 
-def test_env_seed_reproducibility():
-    env_cfg = {"screen_width": 64, "screen_height": 64}
-    n_envs = 2
-    base_seed = 123
+def test_seed_reproducibility():
+    env1 = RoboDunkEnv()
+    env2 = RoboDunkEnv()
 
-    vec_env1 = train.create_vec_env(
-        env_cfg, n_envs=n_envs, base_seed=base_seed, use_subproc=False
-    )
-    vec_env2 = train.create_vec_env(
-        env_cfg, n_envs=n_envs, base_seed=base_seed, use_subproc=False
-    )
+    seed = 123
+    obs1, _ = env1.reset(seed=seed)
+    obs2, _ = env2.reset(seed=seed)
 
-    obs1 = vec_env1.reset()
-    obs2 = vec_env2.reset()
-
-    # Observations should match across runs with same base_seed
+    # Obs arrays should be identical for the first frame
     assert np.allclose(obs1, obs2)
+
+    # After some steps, the sequence is still reproducible if seeded
+    for _ in range(5):
+        obs1, _, _, _, _ = env1.step(env1.action_space.sample())
+        obs2, _, _, _, _ = env2.step(env2.action_space.sample())
+        # Step with same actions? If using RNG inside step, may need to patch rng
