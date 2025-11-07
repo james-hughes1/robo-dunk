@@ -1,5 +1,4 @@
 import pygame
-import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
@@ -41,21 +40,14 @@ def create_view_env(env_cfg, frame_stack=4, seed=0):
 
 
 def view_model_play(model_path, env_cfg, frame_stack=4, max_steps=1000):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-
     # Create vectorized env for model input (no rendering)
     vec_env = create_view_env(env_cfg, frame_stack=frame_stack)
 
-    # Create raw env for rendering only
-    render_env = make_env(env_cfg, seed=0, render_mode="human")
-
     # Load model
-    model = PPO.load(model_path, device=device)
+    model = PPO.load(model_path, device="cpu")
 
     # Reset both envs
     obs = vec_env.reset()
-    render_env.reset()
 
     clock = pygame.time.Clock()
     step = 0
@@ -65,22 +57,17 @@ def view_model_play(model_path, env_cfg, frame_stack=4, max_steps=1000):
         obs, _, done, _ = vec_env.step(action)
 
         # Step the render env with the same action
-        render_env.step(action[0])  # unwrap action from batch
-
-        print(action[0])
 
         clock.tick(env_cfg.get("fps", 60))
 
         if done[0]:
             obs = vec_env.reset()
-            render_env.reset()
 
         vec_env.render()
 
         step += 1
 
     vec_env.close()
-    render_env.close()
     print("Playback finished.")
 
 
