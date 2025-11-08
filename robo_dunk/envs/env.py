@@ -359,11 +359,6 @@ class RoboDunkEnv(gym.Env):
             reverse=True,
             deterministic=deterministic,
         )
-        print(self.config.bucket_y_min)
-        print(self.config.bucket_y_max)
-        print(difficulty_level)
-        print(deterministic)
-        print(self.bucket_y)
         self.arm_length = self._set_difficulty_param(
             self.config.arm_length_min,
             self.config.arm_length_max,
