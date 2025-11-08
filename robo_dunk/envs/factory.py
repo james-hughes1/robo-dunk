@@ -28,6 +28,8 @@ def make_env(env_cfg, render_mode, seed=0, curriculum_wr=None, monitor_fn=None):
         bucket_y_max=env_cfg.get("bucket_y_max", 200),
         arm_length_min=env_cfg.get("arm_length_min", 40),
         arm_length_max=env_cfg.get("arm_length_max", 40),
+        ball_freq_min=env_cfg.get("ball_freq_min", 40),
+        ball_freq_max=env_cfg.get("ball_freq_max", 40),
         proximity_reward=env_cfg.get("proximity_reward", 10.0),
         time_penalty=env_cfg.get("time_penalty", 0.01),
     )

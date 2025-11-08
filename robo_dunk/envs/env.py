@@ -25,7 +25,9 @@ class RoboDunkConfig:
     bucket_y_min: int = 100
     bucket_y_max: int = 200
     arm_length_min: int = 40
-    arm_length_max: int = 40
+    arm_length_max: int = 80
+    ball_freq_min: int = 200
+    ball_freq_max: int = 300
 
     # Rewards
     proximity_reward: float = 10.0
@@ -44,8 +46,6 @@ class RoboDunkEnv(gym.Env):
         self.clock = pygame.time.Clock()
         self.fps = self.config.fps
         self.max_episode_steps = self.config.max_episode_steps
-
-        self._elapsed_steps = 0
 
         self.action_space = spaces.MultiBinary(4)
         self.observation_space = spaces.Box(
@@ -115,6 +115,7 @@ class RoboDunkEnv(gym.Env):
             self.screen = None
 
         self._elapsed_steps = 0
+        self._ball_steps = 0
 
         self.space = pymunk.Space()
         self.space.gravity = (0, 400)
@@ -168,7 +169,8 @@ class RoboDunkEnv(gym.Env):
 
         # Cannon
         self.cannon_base = (self.screen_width - 40, self.screen_height - 50)
-        self._spawn_ball()
+        self.balls = []
+        self.max_balls = 3
 
         self.score = 0
 
@@ -197,29 +199,30 @@ class RoboDunkEnv(gym.Env):
         tip_x = self.cannon_base[0] - self.cannon_height * math.cos(rad)
         tip_y = self.cannon_base[1] - self.cannon_height * math.sin(rad)
 
-        self.ball_body = pymunk.Body(
-            1, pymunk.moment_for_circle(1, 0, self.ball_radius)
-        )
-        self.ball_body.position = tip_x, tip_y
-        self.ball_shape = pymunk.Circle(self.ball_body, self.ball_radius)
-        self.ball_shape.elasticity = self.ball_elasticity
-        self.ball_shape.friction = 0.5
-        self.space.add(self.ball_body, self.ball_shape)
+        ball_body = pymunk.Body(1, pymunk.moment_for_circle(1, 0, self.ball_radius))
+        ball_body.position = tip_x, tip_y
+        ball_shape = pymunk.Circle(ball_body, self.ball_radius)
+        ball_shape.elasticity = self.ball_elasticity
+        ball_shape.friction = 0.5
 
-        self.ball_body.velocity = (-speed * math.cos(rad), -speed * math.sin(rad))
-        self.ball_body.velocity_func = (
+        ball_body.velocity = (-speed * math.cos(rad), -speed * math.sin(rad))
+        ball_body.velocity_func = (
             lambda body, gravity, damping, dt: pymunk.Body.update_velocity(
                 body, gravity, self.drag, dt
             )
         )
+        self._ball_steps = 0
         self.next_cannon_angle = angle
+        self.space.add(ball_body, ball_shape)
+        self.balls.append((ball_body, ball_shape))
 
     def reset(self, seed=None, options=None):
         if seed is not None:
             self.seed(seed)
-        self.space.remove(
-            self.robot_shape, self.arm_shape, self.ball_body, self.ball_shape
-        )
+        for body, shape in self.balls:
+            self.space.remove(self.robot_shape, self.arm_shape, body, shape)
+        self.balls = []
+        self._ball_steps = 0
         self._setup()
         return self._get_obs(), {}
 
@@ -282,31 +285,39 @@ class RoboDunkEnv(gym.Env):
         # Step simulation
         self.space.step(1 / self.fps)
 
-        # Clamp ball speed
-        vx, vy = self.ball_body.velocity
-        speed = (vx**2 + vy**2) ** 0.5
-        if speed > self.max_ball_speed:
-            scale = self.max_ball_speed / speed
-            self.ball_body.velocity = vx * scale, vy * scale
-
         reward = 0
         terminated = False
 
-        # --- Check if ball scored ---
-        dist_to_bucket = self.bucket_floor.point_query(self.ball_body.position).distance
-        if dist_to_bucket <= self.ball_radius and abs(self.ball_body.velocity.y) < 1:
-            reward = 10
-            self.score += 1
-            self.space.remove(self.ball_body, self.ball_shape)
-            self._spawn_ball()
-        else:
-            reward = np.exp(-dist_to_bucket / self.config.proximity_reward)
+        for body, shape in self.balls:
+            # --- Clamp ball speed ---
+            # Clamp ball speed
+            vx, vy = body.velocity
+            speed = (vx**2 + vy**2) ** 0.5
+            if speed > self.max_ball_speed:
+                scale = self.max_ball_speed / speed
+                body.velocity = vx * scale, vy * scale
 
-        # --- Penalize if ball hits ground ---
-        if self.ball_body.position.y >= self.screen_height - self.ball_radius - 1:
-            reward -= 5  # strong penalty
-            self.space.remove(self.ball_body, self.ball_shape)
+            # --- Check if ball scored ---
+            dist_to_bucket = self.bucket_floor.point_query(body.position).distance
+            if dist_to_bucket <= self.ball_radius and abs(body.velocity.y) < 1:
+                reward += 10
+                self.score += 1
+                self.space.remove(body, shape)
+                self.balls.remove((body, shape))
+            else:
+                reward = np.exp(-dist_to_bucket / self.config.proximity_reward)
+
+            # --- Penalize if ball hits ground ---
+            if body.position.y >= self.screen_height - self.ball_radius - 1:
+                reward -= 5  # strong penalty
+                self.space.remove(body, shape)
+                self.balls.remove((body, shape))
+
+        if (self._ball_steps % self.ball_freq == 0 or (not self.balls)) and len(
+            self.balls
+        ) < self.max_balls:
             self._spawn_ball()
+        self._ball_steps += 1
 
         # --- End episode if too long ---
         if self._elapsed_steps >= self.max_episode_steps:
@@ -332,7 +343,6 @@ class RoboDunkEnv(gym.Env):
             self.config.bucket_height_min,
             self.config.bucket_height_max,
             difficulty_level,
-            reverse=True,
         )
         self.bucket_width = self._set_difficulty_param(
             self.config.bucket_width_min,
@@ -349,6 +359,12 @@ class RoboDunkEnv(gym.Env):
         self.arm_length = self._set_difficulty_param(
             self.config.arm_length_min,
             self.config.arm_length_max,
+            difficulty_level,
+            reverse=True,
+        )
+        self.ball_freq = self._set_difficulty_param(
+            self.config.ball_freq_min,
+            self.config.ball_freq_max,
             difficulty_level,
             reverse=True,
         )

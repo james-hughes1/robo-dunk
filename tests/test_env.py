@@ -62,22 +62,24 @@ def test_arm_angle_bounds(env):
 
 def test_ball_dunk_reward(env):
     env.reset()
-    env.ball_body.position = (
+    env._spawn_ball()
+    env.balls[0][0].position = (
         env.screen_width - env.bucket_width // 2,
         env.bucket_y - 1,
     )
-    env.ball_body.velocity = (0, 0)
+    env.balls[0][0].velocity = (0, 0)
     _, reward, _, _, _ = env.step(np.array([0, 0, 0, 0], dtype=np.int8))
     assert reward == 10 - env.time_penalty
 
 
 def test_proximity_reward(env):
     env.reset()
-    env.ball_body.position = (
+    env._spawn_ball()
+    env.balls[0][0].position = (
         env.screen_width - env.bucket_width // 2 + 10,
         env.bucket_y - 10,
     )
-    env.ball_body.velocity = (0, -100)
+    env.balls[0][0].velocity = (0, -100)
     _, reward, _, _, _ = env.step(np.array([0, 0, 0, 0], dtype=np.int8))
     assert 0 < reward < 1
 
