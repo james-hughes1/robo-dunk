@@ -14,43 +14,20 @@ from gymnasium import spaces
 @dataclass
 class RoboDunkConfig:
     # Game
-    screen_width: int = 400
-    screen_height: int = 400
     fps: int = 60
     max_episode_steps: int = 1000
 
-    # Robot
-    robot_width: int = 50
-    robot_height: int = 20
-    robot_speed: int = 5
-    arm_length: int = 80
-    arm_min: int = 180
-    arm_max: int = 360
-    arm_speed: int = 4
-    arm_elasticity: float = 2.0
+    # Difficulty Parameters
+    bucket_height_min: int = 10
+    bucket_height_max: int = 50
+    bucket_width_min: int = 70
+    bucket_width_max: int = 100
+    bucket_y_min: int = 100
+    bucket_y_max: int = 200
+    arm_length_min: int = 40
+    arm_length_max: int = 40
 
-    # Ball
-    ball_radius: int = 8
-    shoot_min_speed: int = 400
-    shoot_max_speed: int = 600
-    max_ball_speed: int = 700
-    ball_elasticity: float = 1.0
-    drag: float = 0.99
-
-    # Cannon
-    cannon_width: int = 6
-    cannon_height: int = 30
-    cannon_angle_min: int = 35
-    cannon_angle_max: int = 55
-
-    # Bucket
-    bucket_height: int = 20
-    bucket_width: int = 100
-    bucket_x: int = 400
-    bucket_y: int = 250
-
-    # General
-    object_elasticity: float = 0.5
+    # Rewards
     proximity_reward: float = 10.0
     time_penalty: float = 0.01
 
@@ -62,8 +39,8 @@ class RoboDunkEnv(gym.Env):
         super().__init__()
         self.config = config or RoboDunkConfig()
         self.render_mode = render_mode
-        self.screen_width = self.config.screen_width
-        self.screen_height = self.config.screen_height
+        self.screen_width = 400
+        self.screen_height = 400
         self.clock = pygame.time.Clock()
         self.fps = self.config.fps
         self.max_episode_steps = self.config.max_episode_steps
@@ -83,6 +60,37 @@ class RoboDunkEnv(gym.Env):
             shape=(self.screen_height, self.screen_width, 1),
             dtype=np.uint8,
         )
+
+        # Robot
+        self.robot_speed = 5
+        self.robot_width = 50
+        self.robot_height = 20
+        self.arm_min = 180
+        self.arm_max = 360
+        self.arm_speed = 4
+        self.arm_elasticity = 2.0
+
+        # Ball
+        self.ball_radius = 8
+        self.shoot_min_speed = 400
+        self.shoot_max_speed = 600
+        self.max_ball_speed = 700
+        self.ball_elasticity = 1.3
+        self.drag = 0.99
+
+        # Cannon
+        self.cannon_width = 6
+        self.cannon_height = 30
+        self.cannon_angle_min = 35
+        self.cannon_angle_max = 60
+
+        # General
+        self.object_elasticity = 0.3
+        self.set_difficulty(1.0)
+
+        # Reward
+        self.proximity_reward = self.config.proximity_reward
+        self.time_penalty = self.config.time_penalty
 
         self._setup()
 
@@ -122,41 +130,37 @@ class RoboDunkEnv(gym.Env):
             pymunk.Segment(self.static_body, (0, 0), (self.screen_width, 0), 2),
         ]
         for wall in walls:
-            wall.elasticity = self.config.object_elasticity
+            wall.elasticity = self.object_elasticity
             wall.friction = 0.5
         self.space.add(*walls)
 
         # Bucket
-        self.bucket_x = self.config.bucket_x
-        self.bucket_y = self.config.bucket_y
-        self.bucket_width = self.config.bucket_width
-        self.bucket_height = self.config.bucket_height
         self.bucket_floor = pymunk.Segment(
             self.static_body,
-            (self.bucket_x - self.bucket_width, self.bucket_y),
-            (self.bucket_x, self.bucket_y),
+            (self.screen_width - self.bucket_width, self.bucket_y),
+            (self.screen_width, self.bucket_y),
             3,
         )
         self.bucket_wall = pymunk.Segment(
             self.static_body,
-            (self.bucket_x - self.bucket_width, self.bucket_y),
-            (self.bucket_x - self.bucket_width, self.bucket_y - self.bucket_height),
+            (self.screen_width - self.bucket_width, self.bucket_y),
+            (self.screen_width - self.bucket_width, self.bucket_y - self.bucket_height),
             3,
         )
-        self.bucket_floor.elasticity = self.config.object_elasticity
-        self.bucket_wall.elasticity = self.config.object_elasticity
+        self.bucket_floor.elasticity = self.object_elasticity
+        self.bucket_wall.elasticity = self.object_elasticity
         self.space.add(self.bucket_floor, self.bucket_wall)
 
         # Robot
         self.robot_body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
         self.robot_body.position = (self.screen_width // 4, self.screen_height - 50)
         self.robot_shape = pymunk.Poly.create_box(
-            self.robot_body, (self.config.robot_width, self.config.robot_height)
+            self.robot_body, (self.robot_width, self.robot_height)
         )
-        self.robot_shape.elasticity = self.config.object_elasticity
+        self.robot_shape.elasticity = self.object_elasticity
         self.space.add(self.robot_body, self.robot_shape)
 
-        self.arm_angle = self.config.arm_min
+        self.arm_angle = self.arm_min
         self.arm_shape = self._create_arm()
         self.space.add(self.arm_shape)
 
@@ -166,21 +170,17 @@ class RoboDunkEnv(gym.Env):
 
         self.score = 0
 
-        # Reward
-        self.proximity_reward = self.config.proximity_reward
-        self.time_penalty = self.config.time_penalty
-
     def _create_arm(self):
         start = (
             self.robot_body.position.x,
-            self.robot_body.position.y - self.config.robot_height / 2,
+            self.robot_body.position.y - self.robot_height / 2,
         )
         end = (
-            start[0] + self.config.arm_length * math.cos(math.radians(-self.arm_angle)),
-            start[1] - self.config.arm_length * math.sin(math.radians(-self.arm_angle)),
+            start[0] + self.arm_length * math.cos(math.radians(-self.arm_angle)),
+            start[1] - self.arm_length * math.sin(math.radians(-self.arm_angle)),
         )
         arm = pymunk.Segment(self.static_body, start, end, 5)
-        arm.elasticity = self.config.arm_elasticity
+        arm.elasticity = self.arm_elasticity
         arm.friction = 0.5
         return arm
 
@@ -188,30 +188,26 @@ class RoboDunkEnv(gym.Env):
         # Use self.np_random if available, else fallback to random
         rng = getattr(self, "np_random", np.random)
 
-        angle = rng.integers(
-            self.config.cannon_angle_min, self.config.cannon_angle_max + 1
-        )
-        speed = rng.integers(
-            self.config.shoot_min_speed, self.config.shoot_max_speed + 1
-        )
+        angle = rng.integers(self.cannon_angle_min, self.cannon_angle_max + 1)
+        speed = rng.integers(self.shoot_min_speed, self.shoot_max_speed + 1)
         rad = math.radians(angle)
 
-        tip_x = self.cannon_base[0] - self.config.cannon_height * math.cos(rad)
-        tip_y = self.cannon_base[1] - self.config.cannon_height * math.sin(rad)
+        tip_x = self.cannon_base[0] - self.cannon_height * math.cos(rad)
+        tip_y = self.cannon_base[1] - self.cannon_height * math.sin(rad)
 
         self.ball_body = pymunk.Body(
-            1, pymunk.moment_for_circle(1, 0, self.config.ball_radius)
+            1, pymunk.moment_for_circle(1, 0, self.ball_radius)
         )
         self.ball_body.position = tip_x, tip_y
-        self.ball_shape = pymunk.Circle(self.ball_body, self.config.ball_radius)
-        self.ball_shape.elasticity = self.config.ball_elasticity
+        self.ball_shape = pymunk.Circle(self.ball_body, self.ball_radius)
+        self.ball_shape.elasticity = self.ball_elasticity
         self.ball_shape.friction = 0.5
         self.space.add(self.ball_body, self.ball_shape)
 
         self.ball_body.velocity = (-speed * math.cos(rad), -speed * math.sin(rad))
         self.ball_body.velocity_func = (
             lambda body, gravity, damping, dt: pymunk.Body.update_velocity(
-                body, gravity, self.config.drag, dt
+                body, gravity, self.drag, dt
             )
         )
         self.next_cannon_angle = angle
@@ -251,29 +247,25 @@ class RoboDunkEnv(gym.Env):
         # --- Handle Robot Movement ---
         if action[0]:
             self.robot_body.position = (
-                self.robot_body.position.x - self.config.robot_speed,
+                self.robot_body.position.x - self.robot_speed,
                 self.robot_body.position.y,
             )
         if action[1]:
             self.robot_body.position = (
-                self.robot_body.position.x + self.config.robot_speed,
+                self.robot_body.position.x + self.robot_speed,
                 self.robot_body.position.y,
             )
         if action[2]:
-            self.arm_angle = min(
-                self.config.arm_max, self.arm_angle + self.config.arm_speed
-            )
+            self.arm_angle = min(self.arm_max, self.arm_angle + self.arm_speed)
         if action[3]:
-            self.arm_angle = max(
-                self.config.arm_min, self.arm_angle - self.config.arm_speed
-            )
+            self.arm_angle = max(self.arm_min, self.arm_angle - self.arm_speed)
 
         # Keep robot within bounds
         self.robot_body.position = (
             max(
-                self.config.robot_width // 2,
+                self.robot_width // 2,
                 min(
-                    self.screen_width // 2 - self.config.robot_width // 2,
+                    self.screen_width // 2 - self.robot_width // 2,
                     self.robot_body.position.x,
                 ),
             ),
@@ -291,8 +283,8 @@ class RoboDunkEnv(gym.Env):
         # Clamp ball speed
         vx, vy = self.ball_body.velocity
         speed = (vx**2 + vy**2) ** 0.5
-        if speed > self.config.max_ball_speed:
-            scale = self.config.max_ball_speed / speed
+        if speed > self.max_ball_speed:
+            scale = self.max_ball_speed / speed
             self.ball_body.velocity = vx * scale, vy * scale
 
         reward = 0
@@ -300,19 +292,16 @@ class RoboDunkEnv(gym.Env):
 
         # --- Check if ball scored ---
         dist_to_bucket = self.bucket_floor.point_query(self.ball_body.position).distance
-        if dist_to_bucket <= self.config.ball_radius and self.ball_body.velocity.y > 0:
+        if dist_to_bucket <= self.ball_radius and abs(self.ball_body.velocity.y) < 1:
             reward = 10
             self.score += 1
             self.space.remove(self.ball_body, self.ball_shape)
             self._spawn_ball()
         else:
-            reward = np.exp(-dist_to_bucket / self.proximity_reward)
+            reward = np.exp(-dist_to_bucket / self.config.proximity_reward)
 
         # --- Penalize if ball hits ground ---
-        if (
-            self.ball_body.position.y
-            >= self.screen_height - self.config.ball_radius - 1
-        ):
+        if self.ball_body.position.y >= self.screen_height - self.ball_radius - 1:
             reward -= 5  # strong penalty
             self.space.remove(self.ball_body, self.ball_shape)
             self._spawn_ball()
@@ -322,10 +311,44 @@ class RoboDunkEnv(gym.Env):
             terminated = True
 
         # --- Time step penalty ---
-        reward -= self.time_penalty
+        reward -= self.config.time_penalty
 
         reward = float(reward)
         return self._get_obs(), reward, terminated, False, {}
+
+    def _set_difficulty_param(self, p_min, p_max, difficulty, reverse=False):
+        rng = getattr(self, "np_random", np.random)
+        difficulty_jump = rng.integers(0, int(difficulty * (p_max - p_min)) + 1)
+        if not reverse:
+            return p_min + difficulty_jump
+        else:
+            return p_max - difficulty_jump
+
+    def set_difficulty(self, difficulty_level):
+        self.bucket_height = self._set_difficulty_param(
+            self.config.bucket_height_min,
+            self.config.bucket_height_max,
+            difficulty_level,
+            reverse=True,
+        )
+        self.bucket_width = self._set_difficulty_param(
+            self.config.bucket_width_min,
+            self.config.bucket_width_max,
+            difficulty_level,
+            reverse=True,
+        )
+        self.bucket_y = self._set_difficulty_param(
+            self.config.bucket_y_min,
+            self.config.bucket_y_max,
+            difficulty_level,
+            reverse=True,
+        )
+        self.arm_length = self._set_difficulty_param(
+            self.config.arm_length_min,
+            self.config.arm_length_max,
+            difficulty_level,
+            reverse=True,
+        )
 
     def render(self):
         if self.render_mode != "human":
@@ -344,8 +367,8 @@ class RoboDunkEnv(gym.Env):
         # Cannon
         angle = math.radians(self.next_cannon_angle)
         offset = 5
-        tip_x = self.cannon_base[0] - self.config.cannon_height * math.cos(angle)
-        tip_y = self.cannon_base[1] - self.config.cannon_height * math.sin(angle)
+        tip_x = self.cannon_base[0] - self.cannon_height * math.cos(angle)
+        tip_y = self.cannon_base[1] - self.cannon_height * math.sin(angle)
         left_bar_start = (
             self.cannon_base[0] - offset * math.sin(angle),
             self.cannon_base[1] + offset * math.cos(angle),
@@ -375,7 +398,7 @@ class RoboDunkEnv(gym.Env):
 
         # Update Display
         pygame.display.flip()
-        self.clock.tick(self.config.fps)
+        self.clock.tick(self.fps)
 
     def close(self):
         pygame.quit()

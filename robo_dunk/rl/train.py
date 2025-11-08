@@ -1,110 +1,34 @@
-import multiprocessing
 import os
 
-import cv2
 import imageio
-import numpy as np
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import (
-    DummyVecEnv,
-    SubprocVecEnv,
-    VecFrameStack,
-    VecTransposeImage,
-)
 
-from robo_dunk.envs.env import RoboDunkConfig, RoboDunkEnv
-from robo_dunk.rl.preprocessing import GrayScaleObservation, ResizeObservation
+from robo_dunk.envs.factory import InferenceEnv, create_vec_env
 from robo_dunk.rl.utils import setup_colab
 
 
-def make_env_fn(env_cfg, rank=0, base_seed=0):
-    """
-    Return a function that creates an env. Each env gets a unique seed
-    for reproducibility across runs.
-    """
-
-    def _init():
-        seed = base_seed + rank
-
-        config = RoboDunkConfig(
-            screen_width=env_cfg.get("screen_width", 400),
-            screen_height=env_cfg.get("screen_height", 400),
-            fps=env_cfg.get("fps", 60),
-            arm_length=env_cfg.get("arm_length", 80),
-            bucket_height=env_cfg.get("bucket_height", 10),
-            bucket_width=env_cfg.get("bucket_width", 100),
-            bucket_y=env_cfg.get("bucket_y", 250),
-            max_episode_steps=env_cfg.get("max_episode_steps", 1000),
-        )
-
-        # render_mode=None for training
-        env = RoboDunkEnv(render_mode="rgb_array", config=config)
-
-        # Apply custom grayscale + resize wrappers
-        env = GrayScaleObservation(env, keep_dim=True)
-        env = ResizeObservation(env, env_cfg.get("resize", (96, 96)))
-
-        # Monitor logs & set seed for reproducibility
-        env = Monitor(env)
-        env.reset(seed=seed)
-        return env
-
-    return _init
-
-
-def create_vec_env(env_cfg, n_envs=1, frame_stack=4, base_seed=0, use_subproc=True):
-    """
-    Create a vectorized environment with optional SubprocVecEnv.
-    Caps n_envs to available CPU cores if using SubprocVecEnv.
-    """
-    max_cores = multiprocessing.cpu_count()
-    if use_subproc and n_envs > max_cores:
-        print(
-            f"n_envs={n_envs} exceeds CPU cores={max_cores}. "
-            f"Capping to {max_cores} for efficiency."
-        )
-        n_envs = max_cores
-
-    env_fns = [make_env_fn(env_cfg, rank=i, base_seed=base_seed) for i in range(n_envs)]
-    vec_env_cls = SubprocVecEnv if use_subproc and n_envs > 1 else DummyVecEnv
-    vec_env = vec_env_cls(env_fns)
-    vec_env = VecTransposeImage(vec_env)
-    if frame_stack > 1:
-        vec_env = VecFrameStack(vec_env, n_stack=frame_stack)
-    return vec_env
-
-
-def record_gif(model, vec_env, gif_path="play.gif", max_steps=1000):
+def record_gif(model, env_cfg, gif_path="play.gif", max_frames=1000):
     """
     Record a GIF using the VecEnv and the original RoboDunkEnv.
     Works with wrappers like GrayScaleObservation and ResizeObservation.
     """
-    obs = vec_env.reset()
+    inf_env = InferenceEnv(model, env_cfg, render_pygame=False)
     frames = []
 
-    for _ in range(max_steps):
-        # Predict action
-        action, _ = model.predict(obs, deterministic=True)
-        obs, rewards, dones, infos = vec_env.step(action)
+    for _ in range(max_frames):
+        # Step environment
+        inf_env.step()
+        frames.append(inf_env.frame)
 
-        action, _ = model.predict(obs, deterministic=True)
-
-        # Get raw observation from the first environment
-        # If it's grayscale (H,W,1), convert to RGB for GIF
-        frame = np.squeeze(obs)[-1]
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
-        frames.append(frame_rgb)
-
-        if dones[0]:
+        if inf_env.done:
             break
 
-    vec_env.close()
+    inf_env.close()
 
     if len(frames) > 0:
-        imageio.mimsave(gif_path, frames, fps=30)
+        imageio.mimsave(gif_path, frames, fps=60)
         print(f"Saved evaluation GIF to: {gif_path}")
     else:
         print("No frames captured; GIF not saved.")
@@ -114,14 +38,13 @@ class GifEvalCallback(EvalCallback):
     def __init__(
         self,
         eval_env,
+        env_cfg,
         gif_path=None,
-        max_steps=1000,
         **kwargs,
     ):
         super().__init__(eval_env=eval_env, **kwargs)
-        self.vec_env = eval_env
         self.gif_path = gif_path
-        self.max_steps = max_steps
+        self.env_cfg = env_cfg
 
     def _on_step(self):
         result = super()._on_step()
@@ -130,9 +53,9 @@ class GifEvalCallback(EvalCallback):
                 path = f"{self.gif_path}/eval_{self.n_calls}.gif"
                 record_gif(
                     self.model,
-                    vec_env=self.vec_env,
+                    env_cfg=self.env_cfg,
                     gif_path=path,
-                    max_steps=self.max_steps,
+                    max_frames=1000,
                 )
         return result
 
