@@ -3,7 +3,6 @@ import multiprocessing
 import gymnasium as gym
 import numpy as np
 from PIL import Image
-from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
     SubprocVecEnv,
@@ -15,7 +14,15 @@ from robo_dunk.envs.env import RoboDunkConfig, RoboDunkEnv
 from robo_dunk.rl.preprocessing import GrayScaleObservation, ResizeObservation
 
 
-def make_env(env_cfg, render_mode, seed=0, curriculum_wr=None, monitor_fn=None):
+def make_env(
+    env_cfg,
+    render_mode,
+    seed=0,
+    curriculum_wr=None,
+    monitor_fn=None,
+    difficulty=0.0,
+    deterministic=False,
+):
     """Create a single RoboDunkEnv with preprocessing for live viewing."""
     config = RoboDunkConfig(
         fps=env_cfg.get("fps", 60),
@@ -35,6 +42,7 @@ def make_env(env_cfg, render_mode, seed=0, curriculum_wr=None, monitor_fn=None):
     )
 
     env = RoboDunkEnv(render_mode=render_mode, config=config)
+    env.set_difficulty(difficulty_level=difficulty, deterministic=deterministic)
     env = GrayScaleObservation(env, keep_dim=True)
     env = ResizeObservation(env, env_cfg.get("resize", (96, 96)))
 
@@ -52,7 +60,15 @@ def make_env(env_cfg, render_mode, seed=0, curriculum_wr=None, monitor_fn=None):
     return env
 
 
-def make_env_fn(env_cfg, rank=0, base_seed=0):
+def make_env_fn(
+    env_cfg,
+    rank=0,
+    base_seed=0,
+    curriculum_wr=None,
+    monitor_fn=None,
+    difficulty=0.0,
+    deterministic=False,
+):
     """
     Return a function that creates an env. Each env gets a unique seed
     for reproducibility across runs.
@@ -64,15 +80,26 @@ def make_env_fn(env_cfg, rank=0, base_seed=0):
             env_cfg,
             render_mode="rgb_array",
             seed=seed,
-            curriculum_wr=CurriculumWrapper,
-            monitor_fn=Monitor,
+            curriculum_wr=curriculum_wr,
+            monitor_fn=monitor_fn,
+            difficulty=difficulty,
+            deterministic=deterministic,
         )
         return env
 
     return _init
 
 
-def create_vec_env(env_cfg, n_envs=1, frame_stack=4, base_seed=0, use_subproc=True):
+def create_vec_env(
+    env_cfg,
+    n_envs=1,
+    frame_stack=4,
+    base_seed=0,
+    use_subproc=True,
+    curriculum_wr=None,
+    monitor_fn=None,
+    difficulty=0.0,
+):
     """
     Create a vectorized environment with optional SubprocVecEnv.
     Caps n_envs to available CPU cores if using SubprocVecEnv.
@@ -85,7 +112,18 @@ def create_vec_env(env_cfg, n_envs=1, frame_stack=4, base_seed=0, use_subproc=Tr
         )
         n_envs = max_cores
 
-    env_fns = [make_env_fn(env_cfg, rank=i, base_seed=base_seed) for i in range(n_envs)]
+    env_fns = [
+        make_env_fn(
+            env_cfg,
+            rank=i,
+            base_seed=base_seed,
+            curriculum_wr=curriculum_wr,
+            monitor_fn=monitor_fn,
+            difficulty=difficulty,
+        )
+        for i in range(n_envs)
+    ]
+
     vec_env_cls = SubprocVecEnv if use_subproc and n_envs > 1 else DummyVecEnv
     vec_env = vec_env_cls(env_fns)
     vec_env = VecTransposeImage(vec_env)
@@ -94,9 +132,19 @@ def create_vec_env(env_cfg, n_envs=1, frame_stack=4, base_seed=0, use_subproc=Tr
     return vec_env
 
 
-def create_view_env(env_cfg, render_mode, frame_stack=4, seed=0):
+def create_view_env(env_cfg, render_mode, frame_stack=4, seed=0, difficulty=0.0):
     """Create a vectorized, frame-stacked, preprocessed environment for viewing."""
-    env = DummyVecEnv([lambda: make_env(env_cfg, seed=seed, render_mode=render_mode)])
+    env = DummyVecEnv(
+        [
+            lambda: make_env(
+                env_cfg,
+                seed=seed,
+                render_mode=render_mode,
+                difficulty=difficulty,
+                deterministic=True,
+            )
+        ]
+    )
     env = VecTransposeImage(env)
     if frame_stack > 1:
         env = VecFrameStack(env, n_stack=frame_stack)
@@ -104,12 +152,13 @@ def create_view_env(env_cfg, render_mode, frame_stack=4, seed=0):
 
 
 class InferenceEnv:
-    def __init__(self, model, env_cfg, render_pygame=False):
+    def __init__(self, model, env_cfg, difficulty, render_pygame=False):
         self.env = create_view_env(
             env_cfg,
             render_mode=("human" if render_pygame else "rgb_array"),
             frame_stack=4,
             seed=0,
+            difficulty=difficulty,
         )
         self.model = model
         self.render_pygame = render_pygame

@@ -4,8 +4,9 @@ import imageio
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.monitor import Monitor
 
-from robo_dunk.envs.factory import InferenceEnv, create_vec_env
+from robo_dunk.envs.factory import CurriculumWrapper, InferenceEnv, create_vec_env
 from robo_dunk.rl.utils import setup_colab
 
 
@@ -14,8 +15,7 @@ def record_gif(model, env_cfg, difficulty, gif_path="play.gif", max_frames=1000)
     Record a GIF using the VecEnv and the original RoboDunkEnv.
     Works with wrappers like GrayScaleObservation and ResizeObservation.
     """
-    inf_env = InferenceEnv(model, env_cfg, render_pygame=False)
-    inf_env.env.envs[0].set_difficulty(difficulty, deterministic=True)
+    inf_env = InferenceEnv(model, env_cfg, difficulty, render_pygame=False)
     frames = []
 
     for _ in range(max_frames):
@@ -29,7 +29,7 @@ def record_gif(model, env_cfg, difficulty, gif_path="play.gif", max_frames=1000)
     inf_env.close()
 
     if len(frames) > 0:
-        imageio.mimsave(gif_path, frames, fps=60)
+        imageio.mimsave(gif_path, frames, duration=20)
         print(f"Saved evaluation GIF to: {gif_path}")
     else:
         print("No frames captured; GIF not saved.")
@@ -90,6 +90,8 @@ def train_ppo(cfg):
         frame_stack=n_stack,
         base_seed=base_seed,
         use_subproc=True,
+        curriculum_wr=CurriculumWrapper,
+        monitor_fn=Monitor,
     )
 
     # PPO model
@@ -105,9 +107,15 @@ def train_ppo(cfg):
     save_path = train_cfg.get("save_path", "./models/ppo_robo_dunk")
     eval_freq = train_cfg.get("eval_freq", 5000)
     eval_vec_env = create_vec_env(
-        env_cfg, n_envs=1, frame_stack=n_stack, base_seed=base_seed, use_subproc=False
+        env_cfg,
+        n_envs=1,
+        frame_stack=n_stack,
+        base_seed=base_seed,
+        use_subproc=False,
+        curriculum_wr=None,
+        monitor_fn=Monitor,
+        difficulty=1.0,
     )
-    eval_vec_env.envs[0].set_difficulty(1.0)
     eval_callback = GifEvalCallback(
         eval_env=eval_vec_env,
         env_cfg=env_cfg,
