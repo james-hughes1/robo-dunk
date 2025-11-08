@@ -170,6 +170,10 @@ class RoboDunkEnv(gym.Env):
         self.cannon_base = (self.screen_width - 40, self.screen_height - 50)
         self.balls = []
         self.max_balls = 3
+        rng = getattr(self, "np_random", np.random)
+        self.next_cannon_angle = rng.integers(
+            self.cannon_angle_min, self.cannon_angle_max + 1
+        )
 
         self.score = 0
 
@@ -191,9 +195,8 @@ class RoboDunkEnv(gym.Env):
         # Use self.np_random if available, else fallback to random
         rng = getattr(self, "np_random", np.random)
 
-        angle = rng.integers(self.cannon_angle_min, self.cannon_angle_max + 1)
         speed = rng.integers(self.shoot_min_speed, self.shoot_max_speed + 1)
-        rad = math.radians(angle)
+        rad = math.radians(self.next_cannon_angle)
 
         tip_x = self.cannon_base[0] - self.cannon_height * math.cos(rad)
         tip_y = self.cannon_base[1] - self.cannon_height * math.sin(rad)
@@ -211,9 +214,11 @@ class RoboDunkEnv(gym.Env):
             )
         )
         self._ball_steps = 0
-        self.next_cannon_angle = angle
         self.space.add(ball_body, ball_shape)
         self.balls.append((ball_body, ball_shape))
+        self.next_cannon_angle = rng.integers(
+            self.cannon_angle_min, self.cannon_angle_max + 1
+        )
 
     def reset(self, seed=None, options=None):
         if seed is not None:
@@ -221,10 +226,13 @@ class RoboDunkEnv(gym.Env):
         self._setup()
         return self._get_obs(), {}
 
-    def _get_obs(self):
+    def get_obs_raw(self, decorations=False):
         # Render the current state to an offscreen pygame surface
         surface = pygame.Surface((self.screen_width, self.screen_height))
         surface.fill((255, 255, 255))
+
+        if decorations:
+            self.draw_decorations(surface)
 
         # Draw all objects (use same draw options as render)
         self.space.debug_draw(pymunk.pygame_util.DrawOptions(surface))
@@ -232,6 +240,11 @@ class RoboDunkEnv(gym.Env):
         # Convert pygame surface (W,H,3) → numpy array (H,W,3)
         frame = pygame.surfarray.array3d(surface)
         frame = np.transpose(frame, (1, 0, 2))
+
+        return frame
+
+    def _get_obs(self):
+        frame = self.get_obs_raw()
 
         # Convert RGB to grayscale (still high-res, no resize)
         gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
@@ -374,14 +387,13 @@ class RoboDunkEnv(gym.Env):
             deterministic=deterministic,
         )
 
-    def render(self):
-        if self.render_mode != "human":
-            return
-        self.screen.fill((255, 255, 255))
+    def draw_decorations(self, surface=None):
+        if surface is None:
+            surface = self.screen
 
         # Conveyor belt
         pygame.draw.line(
-            self.screen,
+            surface,
             (0, 0, 0),
             (0, self.screen_height - 40),
             (self.screen_width // 2, self.screen_height - 40),
@@ -409,16 +421,23 @@ class RoboDunkEnv(gym.Env):
             tip_x + offset * math.sin(angle),
             tip_y - offset * math.cos(angle),
         )
-        pygame.draw.line(self.screen, (34, 139, 34), left_bar_start, left_bar_end, 3)
-        pygame.draw.line(self.screen, (34, 139, 34), right_bar_start, right_bar_end, 3)
-
-        # Physics objects
-        self.space.debug_draw(self.draw_options)
+        pygame.draw.line(surface, (34, 139, 34), left_bar_start, left_bar_end, 3)
+        pygame.draw.line(surface, (34, 139, 34), right_bar_start, right_bar_end, 3)
 
         # --- Draw the score bar ---
         font = pygame.font.Font(None, 28)  # default font, size 28
         text = font.render(f"Score: {self.score}", True, (0, 0, 0))  # black text
-        self.screen.blit(text, (10, 10))  # top-left corner
+        surface.blit(text, (10, 10))  # top-left corner
+
+    def render(self):
+        if self.render_mode != "human":
+            return
+        self.screen.fill((255, 255, 255))
+
+        # Physics objects
+        self.space.debug_draw(self.draw_options)
+
+        self.draw_decorations()
 
         # Update Display
         pygame.display.flip()

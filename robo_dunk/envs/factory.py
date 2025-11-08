@@ -187,11 +187,15 @@ class InferenceEnv:
         frame = np.squeeze(obs)[-1]
         return frame
 
-    def get_obs_resized(self, max_width):
+    def get_obs(self, max_width, raw=False):
+        if raw:
+            frame = self.env.envs[0].env.env.get_obs_raw(decorations=True)
+        else:
+            frame = self.frame
         # Resize frame
-        aspect_ratio = self.frame.shape[1] / self.frame.shape[0]
+        aspect_ratio = frame.shape[1] / frame.shape[0]
         new_height = int(max_width / aspect_ratio)
-        frame_resized = Image.fromarray(self.frame).resize((max_width, new_height))
+        frame_resized = Image.fromarray(frame).resize((max_width, new_height))
         return frame_resized
 
     def reset(self):
