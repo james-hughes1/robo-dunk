@@ -219,10 +219,6 @@ class RoboDunkEnv(gym.Env):
     def reset(self, seed=None, options=None):
         if seed is not None:
             self.seed(seed)
-        for body, shape in self.balls:
-            self.space.remove(self.robot_shape, self.arm_shape, body, shape)
-        self.balls = []
-        self._ball_steps = 0
         self._setup()
         return self._get_obs(), {}
 
