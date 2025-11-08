@@ -11,8 +11,6 @@ import robo_dunk.rl.train as train
 @pytest.fixture
 def env_cfg():
     return {
-        "screen_width": 200,
-        "screen_height": 200,
         "fps": 60,
         "resize": (96, 96),
         "render_mode": None,
@@ -24,8 +22,6 @@ def train_cfg(tmp_path):
     return {
         "colab": {"enabled": False},
         "env": {
-            "screen_width": 200,
-            "screen_height": 200,
             "fps": 60,
             "resize": (96, 96),
             "render_mode": None,

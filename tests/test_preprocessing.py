@@ -15,7 +15,7 @@ def dummy_env():
     obs = np.random.randint(
         0,
         256,
-        size=(env.config.screen_height, env.config.screen_width, 3),
+        size=(env.screen_height, env.screen_width, 3),
         dtype=np.uint8,
     )
     env.reset = lambda **kwargs: (obs, {})  # monkey-patch reset for testing

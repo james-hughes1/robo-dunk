@@ -86,7 +86,8 @@ class RoboDunkEnv(gym.Env):
 
         # General
         self.object_elasticity = 0.3
-        self.set_difficulty(1.0)
+        self.difficulty = 0.0
+        self.set_difficulty(self.difficulty)
 
         # Reward
         self.proximity_reward = self.config.proximity_reward
@@ -99,6 +100,7 @@ class RoboDunkEnv(gym.Env):
         self._seed = seed
         self.np_random, seed_ = gym.utils.seeding.np_random(seed)
         random.seed(seed)  # python random
+        self.set_difficulty(self.difficulty)
         return [seed_]
 
     def _setup(self):
@@ -325,6 +327,7 @@ class RoboDunkEnv(gym.Env):
             return p_max - difficulty_jump
 
     def set_difficulty(self, difficulty_level):
+        self.difficulty = difficulty_level
         self.bucket_height = self._set_difficulty_param(
             self.config.bucket_height_min,
             self.config.bucket_height_max,

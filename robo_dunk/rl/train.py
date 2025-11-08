@@ -105,8 +105,8 @@ def train_ppo(cfg):
     )
     eval_callback = GifEvalCallback(
         eval_env=eval_vec_env,
+        env_cfg=env_cfg,
         gif_path=os.path.dirname(save_path),
-        max_steps=env_cfg.get("max_episode_steps", 1000),
         eval_freq=eval_freq,
         best_model_save_path=os.path.dirname(save_path),
         log_path=os.path.dirname(save_path),

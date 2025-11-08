@@ -18,14 +18,18 @@ from robo_dunk.rl.preprocessing import GrayScaleObservation, ResizeObservation
 def make_env(env_cfg, render_mode, seed=0, curriculum_wr=None, monitor_fn=None):
     """Create a single RoboDunkEnv with preprocessing for live viewing."""
     config = RoboDunkConfig(
-        screen_width=env_cfg.get("screen_width", 400),
-        screen_height=env_cfg.get("screen_height", 400),
         fps=env_cfg.get("fps", 60),
-        arm_length=env_cfg.get("arm_length", 80),
-        bucket_height=env_cfg.get("bucket_height", 10),
-        bucket_width=env_cfg.get("bucket_width", 100),
-        bucket_y=env_cfg.get("bucket_y", 250),
         max_episode_steps=env_cfg.get("max_episode_steps", 1000),
+        bucket_height_min=env_cfg.get("bucket_height_min", 10),
+        bucket_height_max=env_cfg.get("bucket_height_max", 50),
+        bucket_width_min=env_cfg.get("bucket_width_min", 70),
+        bucket_width_max=env_cfg.get("bucket_width_max", 100),
+        bucket_y_min=env_cfg.get("bucket_y_min", 100),
+        bucket_y_max=env_cfg.get("bucket_y_max", 200),
+        arm_length_min=env_cfg.get("arm_length_min", 40),
+        arm_length_max=env_cfg.get("arm_length_max", 40),
+        proximity_reward=env_cfg.get("proximity_reward", 10.0),
+        time_penalty=env_cfg.get("time_penalty", 0.01),
     )
 
     env = RoboDunkEnv(render_mode=render_mode, config=config)
@@ -35,7 +39,7 @@ def make_env(env_cfg, render_mode, seed=0, curriculum_wr=None, monitor_fn=None):
     if curriculum_wr:
 
         def difficulty_schedule(step):
-            return step / config["max_episode_steps"]
+            return step / config.max_episode_steps
 
         env = curriculum_wr(env, difficulty_schedule)
 

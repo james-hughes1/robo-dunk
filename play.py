@@ -6,6 +6,7 @@ from robo_dunk.envs.env import RoboDunkConfig, RoboDunkEnv
 play_config = RoboDunkConfig(max_episode_steps=1000)
 
 env = RoboDunkEnv(render_mode="human", config=play_config)
+env.set_difficulty(1.0)
 obs, _ = env.reset()
 
 running = True

@@ -1,9 +1,19 @@
 import multiprocessing
 
 import numpy as np
+import pytest
 
 from robo_dunk.envs.env import RoboDunkEnv
 from robo_dunk.envs.factory import create_vec_env, make_env_fn
+
+
+@pytest.fixture
+def env_cfg():
+    return {
+        "fps": 60,
+        "resize": (96, 96),
+        "render_mode": None,
+    }
 
 
 def test_make_env_fn(env_cfg):
