@@ -1,12 +1,22 @@
+import argparse
+
 import numpy as np
 import pygame
 
 from robo_dunk.envs.env import RoboDunkConfig, RoboDunkEnv
 
-play_config = RoboDunkConfig(max_episode_steps=1000)
+parser = argparse.ArgumentParser()
+parser.add_argument("-s", type=int, default=1000)
+parser.add_argument("-d", type=float, default=0.1)
+
+args = parser.parse_args()
+max_steps = max(args.s, 10)
+difficulty = min(max(args.d, 0.0), 1.0)
+
+play_config = RoboDunkConfig(max_episode_steps=max_steps)
 
 env = RoboDunkEnv(render_mode="human", config=play_config)
-env.set_difficulty(1.0)
+env.set_difficulty(difficulty)
 obs, _ = env.reset()
 
 running = True

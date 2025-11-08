@@ -11,11 +11,15 @@ st.title("PPO RoboDunk Sandbox")
 
 # Sidebar controls
 st.sidebar.header("Environment Controls")
-screen_width = st.sidebar.slider("Screen Width", 200, 800, 400)
-screen_height = st.sidebar.slider("Screen Height", 200, 800, 400)
-arm_length = st.sidebar.slider("Arm Length", 50, 150, 80)
-bucket_y = st.sidebar.slider("Bucket Y Position", 100, 400, 250)
-fps = st.sidebar.slider("FPS", 10, 120, 60)
+bucket_height = st.sidebar.slider("Lip Height", 10, 50, 20)
+bucket_width = st.sidebar.slider("Bucket Width", 70, 100, 80)
+bucket_y = st.sidebar.slider("Bucket Height", 200, 300, 250)
+arm_length = st.sidebar.slider("Arm Length", 40, 80, 80)
+ball_freq = st.sidebar.slider("Ball Frequency", 100, 300, 300)
+
+# Constants
+FPS = 60
+MAX_STEPS = 2000
 
 # Buttons
 start_button = st.sidebar.button("▶️ Start")
@@ -32,14 +36,18 @@ if "obs" not in st.session_state:
 
 # Env config
 env_cfg = {
-    "screen_width": screen_width,
-    "screen_height": screen_height,
-    "fps": fps,
-    "arm_length": arm_length,
-    "bucket_height": 10,
-    "bucket_width": 100,
-    "bucket_y": bucket_y,
-    "max_episode_steps": 1000,
+    "fps": FPS,
+    "bucket_height_min": bucket_height,
+    "bucket_width_min": bucket_width,
+    "bucket_y_min": 400 - bucket_y,
+    "arm_length_min": arm_length,
+    "ball_freq_min": ball_freq,
+    "bucket_height_max": bucket_height,
+    "bucket_width_max": bucket_width,
+    "bucket_y_max": 400 - bucket_y,
+    "arm_length_max": arm_length,
+    "ball_freq_max": ball_freq,
+    "max_episode_steps": MAX_STEPS,
     "resize": (96, 96),
 }
 
@@ -76,7 +84,7 @@ if st.session_state.running:
         if st.session_state.inf_env.done:
             st.session_state.inf_env.reset()
 
-        time.sleep(1.0 / fps)
+        time.sleep(1.0 / FPS)
 
 else:
     frame_image = st.session_state.inf_env.get_obs_resized(max_width=500)
