@@ -100,7 +100,6 @@ class RoboDunkEnv(gym.Env):
         self._seed = seed
         self.np_random, seed_ = gym.utils.seeding.np_random(seed)
         random.seed(seed)  # python random
-        self.set_difficulty(self.difficulty)
         return [seed_]
 
     def _setup(self):
@@ -360,6 +359,11 @@ class RoboDunkEnv(gym.Env):
             reverse=True,
             deterministic=deterministic,
         )
+        print(self.config.bucket_y_min)
+        print(self.config.bucket_y_max)
+        print(difficulty_level)
+        print(deterministic)
+        print(self.bucket_y)
         self.arm_length = self._set_difficulty_param(
             self.config.arm_length_min,
             self.config.arm_length_max,

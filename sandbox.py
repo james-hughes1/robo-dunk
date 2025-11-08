@@ -62,7 +62,7 @@ model = load_model()
 
 # Reset env
 if reset_button or st.session_state.inf_env is None:
-    st.session_state.inf_env = InferenceEnv(model, env_cfg, render_pygame=False)
+    st.session_state.inf_env = InferenceEnv(model, env_cfg, 0.0, render_pygame=False)
     st.session_state.running = False
 
 # Start/Stop toggle
