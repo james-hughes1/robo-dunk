@@ -13,8 +13,8 @@ def env():
 
 
 def test_env_initialization(env):
-    assert env.screen_width == env.config.screen_width
-    assert env.screen_height == env.config.screen_height
+    assert env.screen_width == 400
+    assert env.screen_height == 400
     assert env.action_space.shape == (4,)
     assert env.observation_space.shape == (400, 400, 1)
 
@@ -42,7 +42,7 @@ def test_robot_movement_bounds(env):
     env.reset()
     env.robot_body.position = (0, env.robot_body.position.y)
     env.step(np.array([0, 0, 0, 0], dtype=np.int8))
-    assert env.robot_body.position.x >= env.config.robot_width // 2
+    assert env.robot_body.position.x >= env.robot_width // 2
 
     env.robot_body.position = (env.screen_width, env.robot_body.position.y)
     env.step(np.array([0, 0, 0, 0], dtype=np.int8))
@@ -51,30 +51,30 @@ def test_robot_movement_bounds(env):
 
 def test_arm_angle_bounds(env):
     env.reset()
-    env.arm_angle = env.config.arm_min
+    env.arm_angle = 180
     env.step(np.array([0, 0, 0, 1], dtype=np.int8))
-    assert env.arm_angle >= env.config.arm_min
+    assert env.arm_angle >= 180
 
-    env.arm_angle = env.config.arm_max
+    env.arm_angle = 360
     env.step(np.array([0, 0, 1, 0], dtype=np.int8))
-    assert env.arm_angle <= env.config.arm_max
+    assert env.arm_angle <= 360
 
 
 def test_ball_dunk_reward(env):
     env.reset()
     env.ball_body.position = (
-        env.bucket_x - env.bucket_width // 2,
-        env.bucket_y,
+        env.screen_width - env.bucket_width // 2,
+        env.bucket_y - 1,
     )
-    env.ball_body.velocity = (0, 100)
+    env.ball_body.velocity = (0, 0)
     _, reward, _, _, _ = env.step(np.array([0, 0, 0, 0], dtype=np.int8))
-    assert reward == 10
+    assert reward == 10 - env.time_penalty
 
 
 def test_proximity_reward(env):
     env.reset()
     env.ball_body.position = (
-        env.bucket_x - env.bucket_width // 2 + 10,
+        env.screen_width - env.bucket_width // 2 + 10,
         env.bucket_y - 10,
     )
     env.ball_body.velocity = (0, -100)
