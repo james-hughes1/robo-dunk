@@ -34,7 +34,7 @@ ppo:
   tensorboard_log: "./ppo_robo_dunk_tensorboard/"
 
 train:
-  total_timesteps: 5_000_000
+  total_timesteps: 2_000_000
   save_path: "./models/ppo_robo_dunk.zip"
   eval_freq: 10_000
   logging_freq: 1

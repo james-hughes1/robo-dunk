@@ -325,44 +325,54 @@ class RoboDunkEnv(gym.Env):
         reward = float(reward)
         return self._get_obs(), reward, terminated, False, {}
 
-    def _set_difficulty_param(self, p_min, p_max, difficulty, reverse=False):
+    def _set_difficulty_param(
+        self, p_min, p_max, difficulty, reverse=False, deterministic=False
+    ):
         rng = getattr(self, "np_random", np.random)
-        difficulty_jump = rng.integers(0, int(difficulty * (p_max - p_min)) + 1)
+        if not deterministic:
+            difficulty_jump = rng.integers(0, int(difficulty * (p_max - p_min)) + 1)
+        else:
+            difficulty_jump = int(difficulty * (p_max - p_min))
         if not reverse:
             return p_min + difficulty_jump
         else:
             return p_max - difficulty_jump
 
-    def set_difficulty(self, difficulty_level):
+    def set_difficulty(self, difficulty_level, deterministic=False):
         self.difficulty = difficulty_level
         self.bucket_height = self._set_difficulty_param(
             self.config.bucket_height_min,
             self.config.bucket_height_max,
             difficulty_level,
+            deterministic=deterministic,
         )
         self.bucket_width = self._set_difficulty_param(
             self.config.bucket_width_min,
             self.config.bucket_width_max,
             difficulty_level,
             reverse=True,
+            deterministic=deterministic,
         )
         self.bucket_y = self._set_difficulty_param(
             self.config.bucket_y_min,
             self.config.bucket_y_max,
             difficulty_level,
             reverse=True,
+            deterministic=deterministic,
         )
         self.arm_length = self._set_difficulty_param(
             self.config.arm_length_min,
             self.config.arm_length_max,
             difficulty_level,
             reverse=True,
+            deterministic=deterministic,
         )
         self.ball_freq = self._set_difficulty_param(
             self.config.ball_freq_min,
             self.config.ball_freq_max,
             difficulty_level,
             reverse=True,
+            deterministic=deterministic,
         )
 
     def render(self):

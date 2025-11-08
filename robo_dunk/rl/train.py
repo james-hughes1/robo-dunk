@@ -9,12 +9,13 @@ from robo_dunk.envs.factory import InferenceEnv, create_vec_env
 from robo_dunk.rl.utils import setup_colab
 
 
-def record_gif(model, env_cfg, gif_path="play.gif", max_frames=1000):
+def record_gif(model, env_cfg, difficulty, gif_path="play.gif", max_frames=1000):
     """
     Record a GIF using the VecEnv and the original RoboDunkEnv.
     Works with wrappers like GrayScaleObservation and ResizeObservation.
     """
     inf_env = InferenceEnv(model, env_cfg, render_pygame=False)
+    inf_env.env.envs[0].set_difficulty(difficulty, deterministic=True)
     frames = []
 
     for _ in range(max_frames):
@@ -50,13 +51,16 @@ class GifEvalCallback(EvalCallback):
         result = super()._on_step()
         if self.n_calls % self.eval_freq == 0:
             if self.gif_path:
-                path = f"{self.gif_path}/eval_{self.n_calls}.gif"
-                record_gif(
-                    self.model,
-                    env_cfg=self.env_cfg,
-                    gif_path=path,
-                    max_frames=1000,
-                )
+                for i, level in enumerate(["easy", "medium", "hard"]):
+                    path = f"{self.gif_path}/eval_{self.n_calls}_{level}.gif"
+                    difficulty = i / 2
+                    record_gif(
+                        self.model,
+                        self.env_cfg,
+                        difficulty,
+                        gif_path=path,
+                        max_frames=1000,
+                    )
         return result
 
 
@@ -103,11 +107,13 @@ def train_ppo(cfg):
     eval_vec_env = create_vec_env(
         env_cfg, n_envs=1, frame_stack=n_stack, base_seed=base_seed, use_subproc=False
     )
+    eval_vec_env.envs[0].set_difficulty(1.0)
     eval_callback = GifEvalCallback(
         eval_env=eval_vec_env,
         env_cfg=env_cfg,
         gif_path=os.path.dirname(save_path),
         eval_freq=eval_freq,
+        n_eval_episodes=10,
         best_model_save_path=os.path.dirname(save_path),
         log_path=os.path.dirname(save_path),
         deterministic=True,
