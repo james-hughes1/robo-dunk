@@ -1,9 +1,29 @@
 global:
   scrape_interval: 5s
   evaluation_interval: 5s
+  external_labels:
+    cluster: 'rl-app'
+    environment: 'production'
 
 scrape_configs:
   - job_name: 'rl_app'
     static_configs:
-      - targets: ['172.17.0.1:8000']
+      - targets: ['streamlit-app:8000']  # Use container name
+        labels:
+          app: 'robodunk'
+          component: 'inference'
     metrics_path: /metrics
+    scrape_interval: 5s
+    scrape_timeout: 5s
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          component: 'monitoring'
+
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+        labels:
+          component: 'visualization'

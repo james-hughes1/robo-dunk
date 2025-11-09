@@ -20,7 +20,12 @@ if not hasattr(st.session_state, "prometheus_started"):
     )
 
     def start_prometheus():
-        start_http_server(8000)  # Prometheus will scrape this port
+        try:
+            # Bind to 0.0.0.0 to be accessible from outside container
+            start_http_server(8000, addr="0.0.0.0")
+            print("Prometheus metrics server started on port 8000")
+        except Exception as e:
+            print(f"Failed to start Prometheus server: {e}")
 
     threading.Thread(target=start_prometheus, daemon=True).start()
     st.session_state.prometheus_started = True

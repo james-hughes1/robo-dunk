@@ -30,3 +30,7 @@ And then go to:
 http://localhost:9090/
 
 http://localhost:3000/
+
+The latter takes you to the Grafana dashboard (you may have to login with default admin/admin credentials). You can navigate to Dashboards -> RoboDunk RL Monitoring.
+
+Current Bug: import cv2 doesn't work - need to change dockerfile to install system dependencies for OpenCV, pygame (,torch?)
