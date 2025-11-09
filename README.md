@@ -12,3 +12,21 @@ Goal: Train a neural network to successfully get the ball into the basket, using
 6. Frontend: Build a frontend with Streamlit
 7. Containerise: Using Docker and building a FastAPI backend. Deploy on AWS
 8. Monitoring & CI/CD
+
+## Monitoring: Prometheus Monitoring & Grafana Dashboard
+
+Here are the relevant commands for local setup:
+
+Run
+
+`docker-compose up -d`
+
+This orchestrates both services. Then start the frontend app
+
+`streamlit run sandbox.py`
+
+And then go to:
+
+http://localhost:9090/
+
+http://localhost:3000/

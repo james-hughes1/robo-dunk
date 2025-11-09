@@ -10,7 +10,7 @@ from robo_dunk.envs.factory import InferenceEnv
 # Metrics
 if not hasattr(st.session_state, "prometheus_started"):
     st.session_state.inference_latency = Summary(
-        "inference_latency_seconds", "Time spent per inference step"
+        "inference_latency_s", "Time spent per inference step"
     )
     st.session_state.episode_total_reward_gauge = Gauge(
         "episode_total_reward", "Total reward per episode"
