@@ -168,9 +168,9 @@ class InferenceEnv:
         self.frame = self._obs_to_frame(self.obs)
         self.done = False
 
-    def step(self):
+    def step(self, tracking=False):
         action, _ = self.model.predict(self.obs, deterministic=True)
-        obs, _, done, _ = self.env.step(action)
+        obs, reward, done, _ = self.env.step(action)
         self.obs = obs
 
         self.steps += 1
@@ -181,6 +181,9 @@ class InferenceEnv:
             self.env.render()
 
         self.done = done[0]
+
+        if tracking:
+            return reward
 
     def _obs_to_frame(self, obs):
         frame = obs[0]
@@ -197,6 +200,9 @@ class InferenceEnv:
         new_height = int(max_width / aspect_ratio)
         frame_resized = Image.fromarray(frame).resize((max_width, new_height))
         return frame_resized
+
+    def get_score(self):
+        return self.env.envs[0].env.env.score
 
     def reset(self):
         self.steps = 0
