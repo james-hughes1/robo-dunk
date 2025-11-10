@@ -50,7 +50,7 @@ MAX_STEPS = 1000
 # Buttons
 start_button = st.sidebar.button("▶️ Start")
 pause_button = st.sidebar.button("⏸️ Pause")
-reset_button = st.sidebar.button("🔄 Reset")
+reset_button = st.sidebar.button("🔄 Apply")
 
 # Session state
 if "running" not in st.session_state:
