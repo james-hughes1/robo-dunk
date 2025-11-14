@@ -39,7 +39,7 @@ ENV DISPLAY=:99
 RUN mkdir -p /app/models
 
 # Expose ports
-EXPOSE 8501 8000
+EXPOSE 8501
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

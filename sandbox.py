@@ -1,34 +1,40 @@
-import threading
 import time
+from datetime import datetime
 
+import boto3
 import streamlit as st
-from prometheus_client import Counter, Gauge, Summary, start_http_server
 from stable_baselines3 import PPO
 
 from robo_dunk.envs.factory import InferenceEnv
 
-# Metrics
-if not hasattr(st.session_state, "prometheus_started"):
-    st.session_state.inference_latency = Summary(
-        "inference_latency_s", "Time spent per inference step"
-    )
-    st.session_state.episode_total_reward_gauge = Gauge(
-        "episode_total_reward", "Total reward per episode"
-    )
-    st.session_state.episode_counter = Counter(
-        "episodes_completed", "Number of completed episodes"
-    )
 
-    def start_prometheus():
-        try:
-            # Bind to 0.0.0.0 to be accessible from outside container
-            start_http_server(8000, addr="0.0.0.0")
-            print("Prometheus metrics server started on port 8000")
-        except Exception as e:
-            print(f"Failed to start Prometheus server: {e}")
+# CloudWatch client (initialized once)
+@st.cache_resource
+def get_cloudwatch_client():
+    """Initialize CloudWatch client once and reuse across all sessions."""
+    return boto3.client("cloudwatch", region_name="eu-west-2")  # Change to your region
 
-    threading.Thread(target=start_prometheus, daemon=True).start()
-    st.session_state.prometheus_started = True
+
+cloudwatch = get_cloudwatch_client()
+
+
+def send_metric(metric_name, value, unit="None"):
+    """Send a metric to CloudWatch."""
+    try:
+        cloudwatch.put_metric_data(
+            Namespace="RoboDunk/App",
+            MetricData=[
+                {
+                    "MetricName": metric_name,
+                    "Value": value,
+                    "Unit": unit,
+                    "Timestamp": datetime.now(),
+                }
+            ],
+        )
+    except Exception as e:
+        print(f"Failed to send metric {metric_name}: {e}")
+
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="RL Sandbox", layout="wide")
@@ -91,7 +97,9 @@ model = load_model()
 
 # Reset env
 if reset_button or st.session_state.inf_env is None:
-    st.session_state.inf_env = InferenceEnv(model, env_cfg, 0.0, render_pygame=False)
+    st.session_state.inf_env = InferenceEnv(
+        model, env_cfg, 0.0, render_pygame=False, tracking=True
+    )
     st.session_state.running = False
 
 # Start/Stop toggle
@@ -102,25 +110,29 @@ if pause_button:
 
 # Run loop
 if st.session_state.running:
-    start_button = False
     while not st.session_state.inf_env.done:
-        total_reward = 0
-        with st.session_state.inference_latency.time():
-            reward = st.session_state.inf_env.step(tracking=True)
-        total_reward += reward
+        # Time the inference
+        inference_time = st.session_state.inf_env.step()
+
+        # Send latency metric
+        send_metric("InferenceLatency", inference_time * 1000, "Milliseconds")
         frame_image = st.session_state.inf_env.get_obs(max_width=500, raw=raw)
         st.session_state.frame_placeholder.image(
             frame_image, caption="Agent View", width="content"
         )
 
         if st.session_state.inf_env.done:
-            st.session_state.episode_total_reward_gauge.set(total_reward)
-            st.session_state.episode_counter.inc()
+            # Send episode metrics
+            score, total_reward = st.session_state.inf_env.get_metrics()
+            send_metric("EpisodeTotalReward", total_reward, "None")
+            send_metric("EpisodeScore", score, "None")
+            send_metric("EpisodesCompleted", 1, "Count")
 
         time.sleep(1.0 / FPS)
 
 else:
-    frame_image = st.session_state.inf_env.get_obs(max_width=500, raw=raw)
-    st.session_state.frame_placeholder.image(
-        frame_image, caption="Agent View", width="content"
-    )
+    if st.session_state.inf_env:
+        frame_image = st.session_state.inf_env.get_obs(max_width=500, raw=raw)
+        st.session_state.frame_placeholder.image(
+            frame_image, caption="Agent View", width="content"
+        )
