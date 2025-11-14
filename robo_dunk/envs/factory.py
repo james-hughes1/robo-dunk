@@ -1,4 +1,5 @@
 import multiprocessing
+import time
 
 import gymnasium as gym
 import numpy as np
@@ -152,7 +153,7 @@ def create_view_env(env_cfg, render_mode, frame_stack=4, seed=0, difficulty=0.0)
 
 
 class InferenceEnv:
-    def __init__(self, model, env_cfg, difficulty, render_pygame=False):
+    def __init__(self, model, env_cfg, difficulty, render_pygame=False, tracking=False):
         self.env = create_view_env(
             env_cfg,
             render_mode=("human" if render_pygame else "rgb_array"),
@@ -168,9 +169,16 @@ class InferenceEnv:
         self.frame = self._obs_to_frame(self.obs)
         self.done = False
 
+        self.tracking = tracking
+        if self.tracking:
+            self.total_reward = 0
+
     def step(self):
+        t_0 = time.time()
         action, _ = self.model.predict(self.obs, deterministic=True)
-        obs, _, done, _ = self.env.step(action)
+        t_inf = time.time() - t_0
+
+        obs, reward, done, _ = self.env.step(action)
         self.obs = obs
 
         self.steps += 1
@@ -181,6 +189,11 @@ class InferenceEnv:
             self.env.render()
 
         self.done = done[0]
+
+        self.total_reward += reward
+
+        if self.tracking:
+            return t_inf
 
     def _obs_to_frame(self, obs):
         frame = obs[0]
@@ -197,6 +210,11 @@ class InferenceEnv:
         new_height = int(max_width / aspect_ratio)
         frame_resized = Image.fromarray(frame).resize((max_width, new_height))
         return frame_resized
+
+    def get_metrics(self):
+        score = self.env.envs[0].env.env.score
+        total_reward = self.total_reward[0]
+        return int(score), float(total_reward)
 
     def reset(self):
         self.steps = 0
