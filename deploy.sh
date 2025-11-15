@@ -12,4 +12,5 @@ echo "Starting new container..."
 docker run -d \
   --name streamlit \
   -p 8501:8501 \
+  -e STREAMLIT_EMAIL_OPT_IN=false \
   $ECR_REPO_URL:latest

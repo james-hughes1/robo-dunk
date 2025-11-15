@@ -30,6 +30,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Turn off streamlit email message
+RUN mkdir -p /root/.streamlit
+COPY .streamlit/credentials.toml /root/.streamlit/credentials.toml
+
 # Set environment variables for headless operation
 ENV SDL_VIDEODRIVER=dummy
 ENV SDL_AUDIODRIVER=dummy
