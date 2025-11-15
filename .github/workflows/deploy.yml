@@ -66,18 +66,22 @@ jobs:
             docker stop robo-dunk || true
             docker rm robo-dunk || true
 
-            # Login to ECR (EC2 should have IAM role with ECR permissions)
+            # Create models directory if it doesn't exist
+            mkdir -p ~/models
+
+            # Login to ECR
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
               | docker login --username AWS --password-stdin ${{ secrets.ECR_REPO_URL }} || exit 1
 
             # Pull latest image
             docker pull ${{ secrets.ECR_REPO_URL }}:latest || exit 1
 
-            # Run new container
+            # Run new container with models volume mounted
             docker run -d \
               --name robo-dunk \
               -p 8501:8501 \
               -p 8000:8000 \
+              -v ~/models:/app/models \
               --restart unless-stopped \
               ${{ secrets.ECR_REPO_URL }}:latest || exit 1
 

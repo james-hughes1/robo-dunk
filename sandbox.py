@@ -1,5 +1,6 @@
 import time
 from datetime import datetime
+from pathlib import Path
 
 import boto3
 import streamlit as st
@@ -12,7 +13,7 @@ from robo_dunk.envs.factory import InferenceEnv
 @st.cache_resource
 def get_cloudwatch_client():
     """Initialize CloudWatch client once and reuse across all sessions."""
-    return boto3.client("cloudwatch", region_name="eu-west-2")  # Change to your region
+    return boto3.client("cloudwatch", region_name="eu-west-2")
 
 
 cloudwatch = get_cloudwatch_client()
@@ -36,11 +37,51 @@ def send_metric(metric_name, value, unit="None"):
         print(f"Failed to send metric {metric_name}: {e}")
 
 
+def get_available_models(models_dir="/app/models"):
+    """Scan the models directory and return list of .zip files."""
+    models_path = Path(models_dir)
+    if not models_path.exists():
+        return []
+
+    # Find all .zip files in the models directory
+    model_files = sorted([f.name for f in models_path.glob("*.zip")])
+    return model_files
+
+
+# Load model with caching
+@st.cache_resource
+def load_model(model_name):
+    """Load a specific model by name."""
+    model_path = f"/app/models/{model_name}"
+    print(f"Loading model: {model_path}")
+    return PPO.load(model_path, device="cpu")
+
+
 # --- Streamlit UI ---
 st.set_page_config(page_title="RL Sandbox", layout="wide")
 st.title("PPO RoboDunk Sandbox")
 
 # Sidebar controls
+st.sidebar.header("Model Selection")
+
+# Get available models
+available_models = get_available_models()
+
+if not available_models:
+    st.sidebar.error("No models found in /app/models/")
+    st.sidebar.info("Please mount models directory with: -v ~/models:/app/models")
+    st.stop()
+
+# Model selector
+selected_model = st.sidebar.selectbox(
+    "Choose Model",
+    available_models,
+    help="Select a trained model from the mounted models directory",
+)
+
+# Display model info
+st.sidebar.caption(f"Selected: `{selected_model}`")
+
 st.sidebar.header("Environment Controls")
 view_style = st.sidebar.selectbox("View Style", ["Original", "Model Input"])
 bucket_height = st.sidebar.slider("Lip Height", 10, 50, 20)
@@ -67,6 +108,8 @@ if "obs" not in st.session_state:
     st.session_state.obs = None
 if "frame_placeholder" not in st.session_state:
     st.session_state.frame_placeholder = st.empty()
+if "current_model" not in st.session_state:
+    st.session_state.current_model = None
 
 # Env config
 env_cfg = {
@@ -86,14 +129,15 @@ env_cfg = {
 }
 raw = view_style == "Original"
 
-
-# Load model
-@st.cache_resource
-def load_model(path="./models/ppo_robo_dunk_1919_08112025.zip"):
-    return PPO.load(path, device="cpu")
-
-
-model = load_model()
+# Load model (only when changed or first time)
+if st.session_state.current_model != selected_model:
+    with st.spinner(f"Loading model: {selected_model}..."):
+        model = load_model(selected_model)
+        st.session_state.current_model = selected_model
+        st.session_state.inf_env = None  # Force env reset with new model
+        st.success(f"✅ Model loaded: {selected_model}")
+else:
+    model = load_model(selected_model)
 
 # Reset env
 if reset_button or st.session_state.inf_env is None:
