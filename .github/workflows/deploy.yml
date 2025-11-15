@@ -24,6 +24,9 @@ jobs:
           aws ecr get-login-password \
           | docker login --username AWS --password-stdin ${{ secrets.ECR_REPO_URL }}
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push Docker image with cache
         uses: docker/build-push-action@v5
         with:
