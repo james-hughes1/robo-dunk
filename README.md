@@ -1,34 +1,37 @@
+![Robo img](assets/robodunk-small.png)
+
 # Robo Dunk
 
-Goal: Train a neural network to successfully get the ball into the basket, using reinforcement learning.
+## About
 
-# Development Roadmap
+Robodunk is an exercise in visual reinforcement learning: involving training a model and then deploying it in a productionised webapp ([try it here](https://robot-sandbox.xyz/)) hosted on AWS.
 
-1. Project Setup: Repo/git setup, packages, githooks (linting/formatting)
-2. Tests: Unit tests for a testing-led development approach
-3. Environment: A cannon shoots a ball at a robot, which can then hit it into the basket
-4. Train: Use colab to train a PPO model
-5. Experimenting: Track with tensorboard
-6. Frontend: Build a frontend with Streamlit
-7. Containerise: Using Docker and building a FastAPI backend. Deploy on AWS
-8. Monitoring & CI/CD
+## Setup and usage
 
-## Monitoring: Prometheus Monitoring & Grafana Dashboard
+Install packages using `pip`
 
-Here are the relevant commands for local setup:
+`python -m venv venv`
 
-Run
+`source venv/bin/activate` (Linux)
 
-`docker-compose up -d`
+`pip install -r requirements.txt`
 
-This orchestrates both services. Then start the frontend app
+Use scripts:
 
-`streamlit run sandbox.py`
+Play yourself (difficulty is between 0-1): `python play.py -d 0.5 -s 5000`
 
-And then go to:
+View inference: `python view_ppo.py -d 0.2 -s 5000 -m models/ppo_robo_dunk_1919_08112025.zip`
 
-http://localhost:9090/
+Training: `python train_ppo.py --config train_config.yaml`
 
-http://localhost:3000/
+Unit tests: `pytest`
 
-The latter takes you to the Grafana dashboard (you may have to login with default admin/admin credentials). You can navigate to Dashboards -> RoboDunk RL Monitoring.
+## Software Features/Tools
+
+Model was trained using `stable-baselines3` and tensorboard
+
+Frontend is built using streamlit.
+
+App is containerised using Docker and uploaded to an AWS elastic container registry (ECR). The app is hosted on an EC2 instance and served it through my own custom domain https://robot-sandbox.xyz using nginx and Let's Encrypt.
+
+CI/CD is automated via GitHub actions which containerises the code and deploys on the EC2 instance via SSH. Additionally, pre-commits are installed locally including flake8 & black (to do: add to GitHub actions, alongside unit test run)
