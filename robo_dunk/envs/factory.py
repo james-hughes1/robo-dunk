@@ -190,9 +190,9 @@ class InferenceEnv:
 
         self.done = done[0]
 
-        self.total_reward += reward
-
         if self.tracking:
+            self.total_reward += reward
+
             return t_inf
 
     def _obs_to_frame(self, obs):
