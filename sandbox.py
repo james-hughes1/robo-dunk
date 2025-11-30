@@ -19,22 +19,40 @@ def get_cloudwatch_client():
 cloudwatch = get_cloudwatch_client()
 
 
-def send_metric(metric_name, value, unit="None"):
-    """Send a metric to CloudWatch."""
+def send_metrics(avg_inference_time, total_reward, score):
+    """Send all episode metrics to CloudWatch at once."""
     try:
         cloudwatch.put_metric_data(
             Namespace="RoboDunk/App",
             MetricData=[
                 {
-                    "MetricName": metric_name,
-                    "Value": value,
-                    "Unit": unit,
+                    "MetricName": "AvgInferenceLatency",
+                    "Value": avg_inference_time * 1000,
+                    "Unit": "Milliseconds",
                     "Timestamp": datetime.now(),
-                }
+                },
+                {
+                    "MetricName": "EpisodeTotalReward",
+                    "Value": total_reward,
+                    "Unit": "None",
+                    "Timestamp": datetime.now(),
+                },
+                {
+                    "MetricName": "EpisodeScore",
+                    "Value": score,
+                    "Unit": "None",
+                    "Timestamp": datetime.now(),
+                },
+                {
+                    "MetricName": "EpisodesCompleted",
+                    "Value": 1,
+                    "Unit": "Count",
+                    "Timestamp": datetime.now(),
+                },
             ],
         )
     except Exception as e:
-        print(f"Failed to send metric {metric_name}: {e}")
+        print(f"Failed to send metrics: {e}")
 
 
 def get_available_models(models_dir="/app/models"):
@@ -91,7 +109,7 @@ arm_length = st.sidebar.slider("Arm Length", 40, 80, 80)
 ball_freq = st.sidebar.slider("Ball Frequency", 100, 300, 300)
 
 # Constants
-FPS = 60
+FPS = 30
 MAX_STEPS = 1000
 
 # Buttons
@@ -110,6 +128,8 @@ if "frame_placeholder" not in st.session_state:
     st.session_state.frame_placeholder = st.empty()
 if "current_model" not in st.session_state:
     st.session_state.current_model = None
+if "inference_times" not in st.session_state:
+    st.session_state.inference_times = []
 
 # Env config
 env_cfg = {
@@ -145,10 +165,12 @@ if reset_button or st.session_state.inf_env is None:
         model, env_cfg, 0.0, render_pygame=False, tracking=True
     )
     st.session_state.running = False
+    st.session_state.inference_times = []
 
 # Start/Stop toggle
 if start_button:
     st.session_state.running = True
+    st.session_state.inference_times = []
 if pause_button:
     st.session_state.running = False
 
@@ -157,26 +179,28 @@ if st.session_state.running:
     while not st.session_state.inf_env.done:
         # Time the inference
         inference_time = st.session_state.inf_env.step()
+        st.session_state.inference_times.append(inference_time)
 
-        # Send latency metric
-        send_metric("InferenceLatency", inference_time * 1000, "Milliseconds")
-        frame_image = st.session_state.inf_env.get_obs(max_width=500, raw=raw)
+        frame_image = st.session_state.inf_env.get_obs(max_width=400, raw=raw)
         st.session_state.frame_placeholder.image(
             frame_image, caption="Agent View", width="content"
         )
 
         if st.session_state.inf_env.done:
-            # Send episode metrics
+            # Calculate average inference time
+            avg_inference_time = sum(st.session_state.inference_times) / len(
+                st.session_state.inference_times
+            )
+
+            # Send all metrics at once
             score, total_reward = st.session_state.inf_env.get_metrics()
-            send_metric("EpisodeTotalReward", total_reward, "None")
-            send_metric("EpisodeScore", score, "None")
-            send_metric("EpisodesCompleted", 1, "Count")
+            send_metrics(avg_inference_time, total_reward, score)
 
         time.sleep(1.0 / FPS)
 
 else:
     if st.session_state.inf_env:
-        frame_image = st.session_state.inf_env.get_obs(max_width=500, raw=raw)
+        frame_image = st.session_state.inf_env.get_obs(max_width=400, raw=raw)
         st.session_state.frame_placeholder.image(
             frame_image, caption="Agent View", width="content"
         )
