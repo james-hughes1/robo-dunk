@@ -200,7 +200,7 @@ def compute_episode(
         f"Avg Inference: {avg_inference_time * 1000:.2f}ms"
     )
 
-    return video_path, message
+    return video_path, video_path, message
 
 
 # Build Gradio interface
@@ -240,6 +240,9 @@ with gr.Blocks(title="RL Sandbox") as demo:
             video_output = gr.Video(
                 label="Episode Playback", autoplay=False, height=600
             )
+            download_output = gr.File(
+                label="📱 Download Video (for Mobile)", visible=True
+            )
             episode_status = gr.Textbox(
                 label="Episode Stats", interactive=False, lines=6
             )
@@ -250,10 +253,10 @@ with gr.Blocks(title="RL Sandbox") as demo:
     1. Select a model and click "Load Model"
     2. Adjust environment parameters as desired
     3. Click "Compute Episode" to run the agent (this may take 20-30 seconds)
-    4. Once complete, the video will play automatically with full playback controls
+    4. Once complete, the video will appear with full playback controls
 
-    The video plays at 60 FPS for smooth playback.
-    Use the video controls to pause, seek, or replay!
+    **Note for Mobile Users:** Video playback is less reliable on mobile,
+    use the "Download Video" button to circumvent this while we find a fix!
     """
     )
 
@@ -274,7 +277,7 @@ with gr.Blocks(title="RL Sandbox") as demo:
                 arm_length,
                 ball_freq,
             ],
-            outputs=[video_output, episode_status],
+            outputs=[video_output, download_output, episode_status],
         )
 
 if __name__ == "__main__":
