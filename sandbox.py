@@ -163,7 +163,15 @@ def compute_episode(
 
     # Write video using imageio (has built-in ffmpeg)
     progress(0.99, desc="Writing video file...")
-    imageio.mimwrite(video_path, frames, fps=60, codec="libx264", quality=8)
+    imageio.mimwrite(
+        video_path,
+        frames,
+        fps=60,
+        codec="libx264",
+        quality=8,
+        pixelformat="yuv420p",
+        output_params=["-movflags", "faststart"],
+    )
 
     # Calculate metrics
     avg_inference_time = sum(inference_times) / len(inference_times)
