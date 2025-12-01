@@ -160,7 +160,7 @@ def start_episode(
             state.running = False
             yield (
                 frame,
-                f"✅ Episode Complete! Score: {score}," + f"Reward: {total_reward:.2f}",
+                f"✅ Episode Complete! Score: {score}, Reward: {total_reward:.2f}",
             )
         else:
             yield frame, f"Running... (Frame {len(state.inference_times)})"
