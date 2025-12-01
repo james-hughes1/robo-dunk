@@ -1,3 +1,4 @@
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -7,6 +8,9 @@ import streamlit as st
 from stable_baselines3 import PPO
 
 from robo_dunk.envs.factory import InferenceEnv
+
+# Get models directory from environment variable
+MODELS_DIR = os.getenv("MODELS_DIR", "./models")
 
 
 # CloudWatch client (initialized once)
@@ -55,7 +59,7 @@ def send_metrics(avg_inference_time, total_reward, score):
         print(f"Failed to send metrics: {e}")
 
 
-def get_available_models(models_dir="/app/models"):
+def get_available_models(models_dir=MODELS_DIR):
     """Scan the models directory and return list of .zip files."""
     models_path = Path(models_dir)
     if not models_path.exists():
@@ -70,7 +74,7 @@ def get_available_models(models_dir="/app/models"):
 @st.cache_resource
 def load_model(model_name):
     """Load a specific model by name."""
-    model_path = f"/app/models/{model_name}"
+    model_path = f"{MODELS_DIR}/{model_name}"
     print(f"Loading model: {model_path}")
     return PPO.load(model_path, device="cpu")
 
@@ -86,8 +90,8 @@ st.sidebar.header("Model Selection")
 available_models = get_available_models()
 
 if not available_models:
-    st.sidebar.error("No models found in /app/models/")
-    st.sidebar.info("Please mount models directory with: -v ~/models:/app/models")
+    st.sidebar.error(f"No models found in {MODELS_DIR}/")
+    st.sidebar.info(f"Please mount models directory with: -v ~/models:{MODELS_DIR}")
     st.stop()
 
 # Model selector
@@ -109,7 +113,7 @@ arm_length = st.sidebar.slider("Arm Length", 40, 80, 80)
 ball_freq = st.sidebar.slider("Ball Frequency", 100, 300, 300)
 
 # Constants
-FPS = 30
+FPS = 20
 MAX_STEPS = 1000
 
 # Buttons
@@ -133,7 +137,7 @@ if "inference_times" not in st.session_state:
 
 # Env config
 env_cfg = {
-    "fps": FPS,
+    "fps": 60,
     "bucket_height_min": bucket_height,
     "bucket_width_min": bucket_width,
     "bucket_y_min": 400 - bucket_y,

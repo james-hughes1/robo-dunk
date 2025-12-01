@@ -38,6 +38,7 @@ COPY .streamlit/credentials.toml /root/.streamlit/credentials.toml
 ENV SDL_VIDEODRIVER=dummy
 ENV SDL_AUDIODRIVER=dummy
 ENV DISPLAY=:99
+ENV MODELS_DIR=/app/models
 
 # Create models directory
 RUN mkdir -p /app/models
