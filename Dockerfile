@@ -30,10 +30,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Turn off streamlit email message
-RUN mkdir -p /root/.streamlit
-COPY .streamlit/credentials.toml /root/.streamlit/credentials.toml
-
 # Set environment variables for headless operation
 ENV SDL_VIDEODRIVER=dummy
 ENV SDL_AUDIODRIVER=dummy
@@ -43,12 +39,12 @@ ENV MODELS_DIR=/app/models
 # Create models directory
 RUN mkdir -p /app/models
 
-# Expose ports
+# Expose port 8501 (matching your existing setup)
 EXPOSE 8501
 
-# Health check
+# Health check (Gradio health endpoint)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+    CMD curl -f http://localhost:8501/ || exit 1
 
-# Run the app
-CMD ["streamlit", "run", "sandbox.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# Run the Gradio app on port 8501
+CMD ["python", "sandbox.py"]
