@@ -229,7 +229,9 @@ with gr.Blocks(title="RL Sandbox") as demo:
             compute_btn = gr.Button("🎬 Compute Episode", variant="primary", size="lg")
 
         with gr.Column(scale=2):
-            video_output = gr.Video(label="Episode Playback", autoplay=True, height=600)
+            video_output = gr.Video(
+                label="Episode Playback", autoplay=False, height=600
+            )
             episode_status = gr.Textbox(
                 label="Episode Stats", interactive=False, lines=6
             )
