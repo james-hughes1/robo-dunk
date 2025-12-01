@@ -1,16 +1,21 @@
 import os
-import time
 from datetime import datetime
 from pathlib import Path
 
 import boto3
 import gradio as gr
+import imageio
+import numpy as np
 from stable_baselines3 import PPO
 
 from robo_dunk.envs.factory import InferenceEnv
 
 # Get models directory from environment variable
 MODELS_DIR = os.getenv("MODELS_DIR", "./models")
+
+# Create videos directory
+VIDEOS_DIR = "./videos"
+os.makedirs(VIDEOS_DIR, exist_ok=True)
 
 # CloudWatch client
 cloudwatch = boto3.client("cloudwatch", region_name="eu-west-2")
@@ -71,12 +76,9 @@ def load_model(model_name):
 # Global state
 class AppState:
     def __init__(self):
-        self.inf_env = None
         self.model = None
         self.model_name = None
-        self.running = False
-        self.inference_times = []
-        self.thread = None
+        self.current_video_path = None
 
 
 state = AppState()
@@ -107,71 +109,90 @@ def load_model_action(model_name):
     if model_name != state.model_name:
         state.model = load_model(model_name)
         state.model_name = model_name
-        state.inf_env = None
         return f"✅ Model loaded: {model_name}"
     return f"Model already loaded: {model_name}"
 
 
-def reset_env(
-    model_name, view_style, bucket_height, bucket_width, bucket_y, arm_length, ball_freq
+def compute_episode(
+    model_name,
+    view_style,
+    bucket_height,
+    bucket_width,
+    bucket_y,
+    arm_length,
+    ball_freq,
+    progress=gr.Progress(),
 ):
-    """Reset environment with current parameters."""
-    state.running = False
+    """Compute entire episode and save as MP4 video."""
     if state.model is None:
         load_model_action(model_name)
 
-    state.inf_env = create_env(
+    # Create environment
+    inf_env = create_env(
         state.model, bucket_height, bucket_width, bucket_y, arm_length, ball_freq
     )
-    state.inference_times = []
-
     raw = view_style == "Original"
-    frame = state.inf_env.get_obs(max_width=400, raw=raw)
-    return frame, "Environment reset"
 
+    # Create video file with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    video_path = os.path.join(VIDEOS_DIR, f"episode_{timestamp}.mp4")
 
-def start_episode(
-    model_name, view_style, bucket_height, bucket_width, bucket_y, arm_length, ball_freq
-):
-    """Start or resume episode."""
-    if state.model is None:
-        load_model_action(model_name)
+    # Collect all frames first
+    frames = []
+    inference_times = []
 
-    if state.inf_env is None or state.inf_env.done:
-        state.inf_env = create_env(
-            state.model, bucket_height, bucket_width, bucket_y, arm_length, ball_freq
+    progress(0, desc="Computing episode...")
+
+    # Get first frame
+    first_frame = inf_env.get_obs(max_width=400, raw=raw)
+    frames.append(np.array(first_frame))
+
+    frame_count = 1
+
+    while not inf_env.done:
+        inference_time = inf_env.step()
+        inference_times.append(inference_time)
+
+        frame = inf_env.get_obs(max_width=400, raw=raw)
+        frames.append(np.array(frame))
+
+        frame_count += 1
+        progress(
+            min(frame_count / 1000, 0.99), desc=f"Computing frame {frame_count}/1000..."
         )
-        state.inference_times = []
 
-    state.running = True
-    raw = view_style == "Original"
+    # Write video using imageio (has built-in ffmpeg)
+    progress(0.99, desc="Writing video file...")
+    imageio.mimwrite(video_path, frames, fps=60, codec="libx264", quality=8)
 
-    # Run episode in generator mode for smooth updates
-    while state.running and not state.inf_env.done:
-        inference_time = state.inf_env.step()
-        state.inference_times.append(inference_time)
+    # Calculate metrics
+    avg_inference_time = sum(inference_times) / len(inference_times)
+    score, total_reward = inf_env.get_metrics()
 
-        frame = state.inf_env.get_obs(max_width=400, raw=raw)
+    # Send to CloudWatch
+    send_metrics(avg_inference_time, total_reward, score)
 
-        if state.inf_env.done:
-            avg_inference_time = sum(state.inference_times) / len(state.inference_times)
-            score, total_reward = state.inf_env.get_metrics()
-            send_metrics(avg_inference_time, total_reward, score)
-            state.running = False
-            yield (
-                frame,
-                f"✅ Episode Complete! Score: {score}, Reward: {total_reward:.2f}",
-            )
-        else:
-            yield frame, f"Running... (Frame {len(state.inference_times)})"
+    # Clean up
+    inf_env.close()
 
-        time.sleep(1.0 / 30)
+    # Store video path
+    state.current_video_path = video_path
 
+    progress(1.0, desc="Complete!")
 
-def pause_episode():
-    """Pause the episode."""
-    state.running = False
-    return "Paused"
+    print(f"Video saved to: {video_path}")
+    print(f"Video file exists: {os.path.exists(video_path)}")
+    print(f"Video file size: {os.path.getsize(video_path)} bytes")
+
+    message = (
+        "✅ Episode Complete!\n\n"
+        f"Score: {score}\n"
+        f"Total Reward: {total_reward:.2f}\n"
+        f"Frames: {frame_count}\n"
+        f"Avg Inference: {avg_inference_time * 1000:.2f}ms"
+    )
+
+    return video_path, message
 
 
 # Build Gradio interface
@@ -202,17 +223,29 @@ with gr.Blocks(title="RL Sandbox") as demo:
             bucket_width = gr.Slider(70, 100, value=80, label="Bucket Width")
             bucket_y = gr.Slider(200, 300, value=250, label="Bucket Height")
             arm_length = gr.Slider(40, 80, value=80, label="Arm Length")
-            ball_freq = gr.Slider(100, 300, value=300, label="Ball Frequency")
+            ball_freq = gr.Slider(100, 300, value=300, label="Ball Reload")
 
             gr.Markdown("## Controls")
-            with gr.Row():
-                play_btn = gr.Button("▶️ Play", variant="primary")
-                pause_btn = gr.Button("⏸️ Pause")
-            reset_btn = gr.Button("🔄 Apply / Reset")
+            compute_btn = gr.Button("🎬 Compute Episode", variant="primary", size="lg")
 
         with gr.Column(scale=2):
-            video_output = gr.Image(label="Agent View", height=400)
-            episode_status = gr.Textbox(label="Episode Status", interactive=False)
+            video_output = gr.Video(label="Episode Playback", autoplay=True, height=600)
+            episode_status = gr.Textbox(
+                label="Episode Stats", interactive=False, lines=6
+            )
+
+    gr.Markdown(
+        """
+    ### How to use:
+    1. Select a model and click "Load Model"
+    2. Adjust environment parameters as desired
+    3. Click "Compute Episode" to run the agent (this may take 20-30 seconds)
+    4. Once complete, the video will play automatically with full playback controls
+
+    The video plays at 60 FPS for smooth playback.
+    Use the video controls to pause, seek, or replay!
+    """
+    )
 
     # Wire up callbacks
     if available_models:
@@ -220,8 +253,8 @@ with gr.Blocks(title="RL Sandbox") as demo:
             fn=load_model_action, inputs=[model_dropdown], outputs=[model_status]
         )
 
-        reset_btn.click(
-            fn=reset_env,
+        compute_btn.click(
+            fn=compute_episode,
             inputs=[
                 model_dropdown,
                 view_style,
@@ -233,22 +266,6 @@ with gr.Blocks(title="RL Sandbox") as demo:
             ],
             outputs=[video_output, episode_status],
         )
-
-        play_btn.click(
-            fn=start_episode,
-            inputs=[
-                model_dropdown,
-                view_style,
-                bucket_height,
-                bucket_width,
-                bucket_y,
-                arm_length,
-                ball_freq,
-            ],
-            outputs=[video_output, episode_status],
-        )
-
-        pause_btn.click(fn=pause_episode, outputs=[episode_status])
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=8501)

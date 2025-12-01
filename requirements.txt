@@ -7,6 +7,7 @@ annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.12.0
 attrs==25.4.0
+av==16.0.1
 babel==2.17.0
 black==25.9.0
 blinker==1.9.0
@@ -48,6 +49,7 @@ huggingface_hub==1.1.6
 identify==2.6.15
 idna==3.11
 ImageIO==2.37.2
+imageio-ffmpeg==0.6.0
 imagesize==1.4.1
 iniconfig==2.3.0
 isort==7.0.0

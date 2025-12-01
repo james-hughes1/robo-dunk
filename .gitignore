@@ -15,6 +15,7 @@ venv.bak/
 # Hidden Folders
 models/
 secrets/
+videos/
 
 # Streamlit
 .streamlit/machine_id_v4
