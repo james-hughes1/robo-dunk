@@ -4,7 +4,7 @@
 
 ## About
 
-Robodunk is an exercise in visual reinforcement learning: involving training a model and then deploying it in a productionised webapp ([try it here](https://robot-sandbox.xyz/)) hosted on AWS.
+Robodunk is an exercise in visual reinforcement learning: involving training a model and then deploying it in a productionised webapp ([try it here](https://robot-sandbox.xyz/)) hosted on Google Cloud Run.
 
 ## Setup and usage
 
@@ -14,7 +14,9 @@ Install packages using `pip`
 
 `source venv/bin/activate` (Linux)
 
-`pip install -r requirements.txt`
+`pip install -r requirements-dev.txt`
+
+(`requirements.txt` is a slim, CPU-only set of runtime dependencies used by the deployed app.)
 
 Use scripts:
 
@@ -30,8 +32,10 @@ Unit tests: `pytest`
 
 Model was trained using `stable-baselines3` and tensorboard
 
-Frontend is built using streamlit.
+Frontend is built using Gradio (`python sandbox.py` to run it locally).
 
-App is containerised using Docker and uploaded to an AWS elastic container registry (ECR). The app is hosted on an EC2 instance and served it through my own custom domain https://robot-sandbox.xyz using nginx and Let's Encrypt.
+App is containerised using Docker and hosted on Google Cloud Run, which scales to zero when idle (so it costs next to nothing for a demo; the first visit after a quiet spell takes a few seconds to start). Deploy with `./deploy.sh`, which builds the image from source with Cloud Build (including the model in `models/`) and deploys it.
 
-CI/CD is automated via GitHub actions which containerises the code and deploys on the EC2 instance via SSH. Additionally, pre-commits are installed locally including flake8 & black (to do: add to GitHub actions, alongside unit test run)
+Pre-commits are installed locally including flake8 & black (to do: add to GitHub actions, alongside unit test run)
+
+(Previously the app was pushed to AWS ECR and served from an EC2 instance behind nginx, with CI/CD via GitHub Actions; see the git history.)
