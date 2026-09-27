@@ -2,7 +2,6 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-import boto3
 import gradio as gr
 import imageio
 import numpy as np
@@ -16,45 +15,6 @@ MODELS_DIR = os.getenv("MODELS_DIR", "./models")
 # Create videos directory
 VIDEOS_DIR = "./videos"
 os.makedirs(VIDEOS_DIR, exist_ok=True)
-
-# CloudWatch client
-cloudwatch = boto3.client("cloudwatch", region_name="eu-west-2")
-
-
-def send_metrics(avg_inference_time, total_reward, score):
-    """Send all episode metrics to CloudWatch at once."""
-    try:
-        cloudwatch.put_metric_data(
-            Namespace="RoboDunk/App",
-            MetricData=[
-                {
-                    "MetricName": "AvgInferenceLatency",
-                    "Value": avg_inference_time * 1000,
-                    "Unit": "Milliseconds",
-                    "Timestamp": datetime.now(),
-                },
-                {
-                    "MetricName": "EpisodeTotalReward",
-                    "Value": total_reward,
-                    "Unit": "None",
-                    "Timestamp": datetime.now(),
-                },
-                {
-                    "MetricName": "EpisodeScore",
-                    "Value": score,
-                    "Unit": "None",
-                    "Timestamp": datetime.now(),
-                },
-                {
-                    "MetricName": "EpisodesCompleted",
-                    "Value": 1,
-                    "Unit": "Count",
-                    "Timestamp": datetime.now(),
-                },
-            ],
-        )
-    except Exception as e:
-        print(f"Failed to send metrics: {e}")
 
 
 def get_available_models(models_dir=MODELS_DIR):
@@ -177,9 +137,6 @@ def compute_episode(
     avg_inference_time = sum(inference_times) / len(inference_times)
     score, total_reward = inf_env.get_metrics()
 
-    # Send to CloudWatch
-    send_metrics(avg_inference_time, total_reward, score)
-
     # Clean up
     inf_env.close()
 
@@ -281,4 +238,4 @@ with gr.Blocks(title="RL Sandbox") as demo:
         )
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=8501)
+    demo.launch()
