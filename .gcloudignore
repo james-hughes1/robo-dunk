@@ -1,0 +1,12 @@
+# Files uploaded by `gcloud run deploy --source .` (otherwise .gitignore is used,
+# which would exclude models/). Mirrors .dockerignore.
+*
+!Dockerfile
+!.dockerignore
+!requirements.txt
+!robo_dunk/
+!robo_dunk/**
+!sandbox.py
+!models/
+!models/**
+**/__pycache__

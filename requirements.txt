@@ -1,4 +1,4 @@
-# Runtime dependencies for the sandbox app (installed by Hugging Face Spaces).
+# Runtime dependencies for the sandbox app (installed in the Docker image).
 # For training/development use requirements-dev.txt instead.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.9.0+cpu

@@ -1,50 +1,26 @@
 FROM python:3.10-slim
 
-# Set working directory
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    # Headless pygame (no display / sound card in the container)
+    SDL_VIDEODRIVER=dummy \
+    SDL_AUDIODRIVER=dummy \
+    # Cloud Run sends traffic to port 8080
+    GRADIO_SERVER_NAME=0.0.0.0 \
+    GRADIO_SERVER_PORT=8080 \
+    MODELS_DIR=/app/models
+
 WORKDIR /app
 
-# Install system dependencies for OpenCV and pygame
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
-    libgomp1 \
-    libsdl2-2.0-0 \
-    libsdl2-image-2.0-0 \
-    libsdl2-mixer-2.0-0 \
-    libsdl2-ttf-2.0-0 \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first for better caching
+# Install dependencies first for better layer caching
 COPY requirements.txt .
+RUN pip install -r requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# App code and trained model(s)
+COPY robo_dunk/ robo_dunk/
+COPY sandbox.py .
+COPY models/ models/
 
-# Copy application code
-COPY . .
+EXPOSE 8080
 
-# Set environment variables for headless operation
-ENV SDL_VIDEODRIVER=dummy
-ENV SDL_AUDIODRIVER=dummy
-ENV DISPLAY=:99
-ENV MODELS_DIR=/app/models
-
-# Create models directory
-RUN mkdir -p /app/models
-
-# Expose port 8501 (matching your existing setup)
-EXPOSE 8501
-
-# Health check (Gradio health endpoint)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8501/ || exit 1
-
-# Run the Gradio app on port 8501
 CMD ["python", "sandbox.py"]
